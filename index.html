@@ -37,7 +37,6 @@
 
     <!-- Right Controls & LIVE DATABASE INDICATOR BUTTON -->
     <div class="flex items-center gap-2.5">
-      <!-- Top-Right Database Status Indicator Button -->
       <button id="btnDbStatus" type="button" class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs font-semibold flex items-center gap-2 hover:bg-slate-700 transition" title="Click to check database connection details">
         <span id="dbStatusDot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
         <span id="dbStatusText" class="text-slate-200">Checking DB...</span>
@@ -48,7 +47,7 @@
       </button>
 
       <div id="navUserBox" class="hidden items-center gap-2.5 pl-2 pr-3 py-1 rounded-lg bg-slate-900 border border-slate-700">
-        <div id="navUserAvatar" class="w-7 h-7 rounded-full flex items-center justify-center text-sm border border-white/40"></div>
+        <div id="navUserAvatar" class="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold border border-white/40"></div>
         <div class="text-xs leading-tight">
           <div id="navUserDisplay" class="font-bold text-slate-100"></div>
           <div id="navUsername" class="text-[11px] text-emerald-400 font-medium"></div>
@@ -105,14 +104,9 @@
               class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-600 focus:border-emerald-500 rounded-lg text-sm text-white outline-none transition" />
           </div>
 
-          <div id="fieldTokenPicker">
-            <label class="block text-xs font-semibold text-slate-300 mb-2">Choose Your Board Token</label>
-            <div id="authTokenGrid" class="grid grid-cols-4 gap-2"></div>
-          </div>
-
           <div id="authErrorMsg" class="hidden text-xs text-red-300 bg-red-900/40 border border-red-500/40 rounded-lg px-3 py-2"></div>
 
-          <button id="btnAuthSubmit" type="submit" class="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow transition flex items-center justify-center gap-2">
+          <button id="btnAuthSubmit" type="submit" class="w-full py-2.5 mt-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow transition flex items-center justify-center gap-2">
             <span>Enter Game Lobby</span>
             <i class="fa-solid fa-arrow-right"></i>
           </button>
@@ -274,6 +268,20 @@
 
     </section>
   </main>
+
+  <!-- MODAL: TOKEN PICKER (NEW) -->
+  <div id="modalTokenPicker" class="fixed inset-0 z-50 hidden bg-black/80 flex items-center justify-center p-4">
+    <div class="bg-slate-800 border-2 border-emerald-500 rounded-xl max-w-sm w-full p-5 shadow-2xl text-center">
+      <h3 class="text-lg font-bold text-white mb-1">Choose Your Token</h3>
+      <p class="text-xs text-slate-300 mb-4">Select an available piece to enter the game.</p>
+      <div id="gridRoomTokenPicker" class="grid grid-cols-4 gap-2 mb-5">
+        <!-- Tokens rendered dynamically -->
+      </div>
+      <div class="flex justify-end gap-2 border-t border-slate-700 pt-4">
+        <button id="btnCancelTokenPicker" class="px-5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm font-bold text-slate-200 shadow">Cancel</button>
+      </div>
+    </div>
+  </div>
 
   <!-- MODAL 1: PLAYER-TO-PLAYER TRADE HUB MODAL -->
   <div id="modalTradeHub" class="fixed inset-0 z-50 hidden bg-black/75 flex items-center justify-center p-4">

@@ -203,7 +203,6 @@ let currentRoomId = null;
 let selectedInspectTileId = 39;
 let selectedPortfolioPlayerId = null;
 let authMode = 'register';
-let selectedAuthToken = PLAYER_TOKENS[0].id;
 let isRollingAnim = false;
 
 function updateDbIndicator(status, labelText, diagnosticDetail) {
@@ -332,7 +331,6 @@ function setupRealtimeListeners(projectId) {
     });
     allRoomsMap = nextRooms;
 
-    // If the active room was deleted by the host, return players to the lobby
     if (currentRoomId && !allRoomsMap[currentRoomId]) {
       currentRoomId = null;
       document.getElementById('navRoomBadge').classList.add('hidden');
@@ -357,7 +355,6 @@ function setupRealtimeListeners(projectId) {
   }, (err) => console.error("Invites listener error:", err));
 }
 
-// FIXED: Delete *Json strings after unpacking so they never overwrite local array updates!
 function normalizeRoomData(raw) {
   const room = { ...raw };
   if (typeof room.playersJson === 'string') {
@@ -432,51 +429,20 @@ async function saveRoomState(room) {
 // ============================================================================
 // 4. AUTHENTICATION & @USERNAME REGISTRATION LOGIC
 // ============================================================================
-function renderAuthTokenPicker() {
-  const grid = document.getElementById('authTokenGrid');
-  if (!grid) return;
-  grid.innerHTML = PLAYER_TOKENS.map((t) => {
-    const active = t.id === selectedAuthToken;
-    return `
-      <button type="button" data-token="${t.id}"
-        class="auth-token-btn p-2 rounded-lg border flex flex-col items-center gap-1 transition ${
-          active
-            ? 'bg-slate-700 border-emerald-400 shadow'
-            : 'bg-slate-900 border-slate-700 hover:border-slate-500'
-        }">
-        <span class="w-7 h-7 rounded-full flex items-center justify-center text-base" style="background:${t.color}30; border: 1.5px solid ${t.color}">
-          ${t.emoji}
-        </span>
-        <span class="text-[11px] font-medium text-slate-200 truncate w-full text-center">${t.name}</span>
-      </button>
-    `;
-  }).join('');
-
-  grid.querySelectorAll('.auth-token-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      selectedAuthToken = btn.dataset.token;
-      renderAuthTokenPicker();
-    });
-  });
-}
-
 function setAuthTab(mode) {
   authMode = mode;
   const tabReg = document.getElementById('tabAuthRegister');
   const tabLog = document.getElementById('tabAuthLogin');
   const fieldDisp = document.getElementById('fieldDisplayName');
-  const fieldTok = document.getElementById('fieldTokenPicker');
 
   if (mode === 'register') {
     tabReg.className = 'py-2 text-xs font-bold rounded-md bg-emerald-600 text-white transition';
     tabLog.className = 'py-2 text-xs font-bold rounded-md text-slate-400 hover:text-white transition';
     fieldDisp.classList.remove('hidden');
-    fieldTok.classList.remove('hidden');
   } else {
     tabLog.className = 'py-2 text-xs font-bold rounded-md bg-emerald-600 text-white transition';
     tabReg.className = 'py-2 text-xs font-bold rounded-md text-slate-400 hover:text-white transition';
     fieldDisp.classList.add('hidden');
-    fieldTok.classList.add('hidden');
   }
   document.getElementById('authErrorMsg').classList.add('hidden');
 }
@@ -489,7 +455,7 @@ async function handleAuthSubmit(e) {
   const errBox = document.getElementById('authErrorMsg');
 
   if (rawUsername.length < 3) {
-    errBox.textContent = 'Username must be at least 3 characters (letters, numbers, or underscore).';
+    errBox.textContent = 'Username must be at least 3 characters.';
     errBox.classList.remove('hidden');
     return;
   }
@@ -513,7 +479,6 @@ async function handleAuthSubmit(e) {
       uid: uid,
       username: rawUsername,
       displayName: displayName,
-      token: selectedAuthToken,
       pin: pin,
       createdAt: Date.now()
     };
@@ -578,17 +543,16 @@ function showViewSection(viewName) {
 }
 
 function enterAuthenticatedState() {
-  const tokObj = PLAYER_TOKENS.find(t => t.id === myAccount.token) || PLAYER_TOKENS[0];
   const navUserBox = document.getElementById('navUserBox');
   navUserBox.classList.remove('hidden');
   navUserBox.classList.add('flex');
 
   const avatarEl = document.getElementById('navUserAvatar');
-  avatarEl.style.backgroundColor = tokObj.color + '33';
-  avatarEl.style.borderColor = tokObj.color;
-  avatarEl.textContent = tokObj.emoji;
+  avatarEl.style.backgroundColor = '#10b98133';
+  avatarEl.style.borderColor = '#10b981';
+  avatarEl.textContent = (myAccount.displayName || myAccount.username).charAt(0).toUpperCase();
 
-  document.getElementById('navUserDisplay').textContent = myAccount.displayName;
+  document.getElementById('navUserDisplay').textContent = myAccount.displayName || myAccount.username;
   document.getElementById('navUsername').textContent = '@' + myAccount.username;
 
   if (currentRoomId && allRoomsMap[currentRoomId]) {
@@ -602,11 +566,50 @@ function enterAuthenticatedState() {
 }
 
 // ============================================================================
-// 5. LOBBY, ROOM CREATION, JOINING & ROOM DELETION SYSTEM
+// 5. ROOM CREATION, JOINING, & NEW TOKEN PICKER MODAL
 // ============================================================================
-function createPlayerSeatObject(acc, seatIdx, startingCash, isSimulated = false) {
-  const preferredTok = acc.token ? PLAYER_TOKENS.find(t => t.id === acc.token) : null;
-  const tok = preferredTok || PLAYER_TOKENS[seatIdx % PLAYER_TOKENS.length];
+let activeTokenPickerCallback = null;
+
+function openTokenPickerModal(takenTokenIds, callback) {
+  activeTokenPickerCallback = callback;
+  const grid = document.getElementById('gridRoomTokenPicker');
+  const modal = document.getElementById('modalTokenPicker');
+  
+  grid.innerHTML = PLAYER_TOKENS.map(t => {
+    const isTaken = takenTokenIds.includes(t.id);
+    return `
+      <button type="button" ${isTaken ? 'disabled' : ''} data-token="${t.id}"
+        class="room-token-btn p-2 rounded-lg border flex flex-col items-center gap-1 transition ${
+          isTaken
+            ? 'bg-slate-900 border-slate-800 opacity-40 cursor-not-allowed grayscale'
+            : 'bg-slate-700 border-slate-500 hover:border-emerald-400 hover:bg-slate-600 shadow-sm'
+        }">
+        <span class="w-8 h-8 rounded-full flex items-center justify-center text-lg" style="background:${t.color}30; border: 2px solid ${t.color}">
+          ${t.emoji}
+        </span>
+        <span class="text-[11px] font-bold text-slate-200 truncate w-full text-center">${t.name}</span>
+        ${isTaken ? '<span class="text-[9px] text-red-400 uppercase font-bold mt-0.5">Taken</span>' : ''}
+      </button>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('.room-token-btn:not([disabled])').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+      if (activeTokenPickerCallback) activeTokenPickerCallback(btn.dataset.token);
+    });
+  });
+
+  modal.classList.remove('hidden');
+}
+
+document.getElementById('btnCancelTokenPicker').addEventListener('click', () => {
+  document.getElementById('modalTokenPicker').classList.add('hidden');
+  activeTokenPickerCallback = null;
+});
+
+function createPlayerSeatObject(acc, startingCash, isSimulated = false, selectedTokenId = null) {
+  const tok = PLAYER_TOKENS.find(t => t.id === selectedTokenId) || PLAYER_TOKENS[0];
   return {
     id: acc.username,
     username: acc.username,
@@ -630,43 +633,45 @@ async function handleCreateRoom(e) {
 
   const title = document.getElementById('inputRoomTitle').value.trim() || `${myAccount.displayName}'s Game`;
   const startingCash = parseInt(document.getElementById('selectStartingCash').value, 10) || 1500;
-  const roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-  const code = Math.random().toString(36).substring(2, 7).toUpperCase();
 
-  const hostSeat = createPlayerSeatObject(myAccount, 0, startingCash, false);
+  openTokenPickerModal([], async (selectedTokenId) => {
+    const roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    const code = Math.random().toString(36).substring(2, 7).toUpperCase();
 
-  const newRoom = {
-    id: roomId,
-    title,
-    code,
-    hostUsername: myAccount.username,
-    status: 'waiting',
-    startingCash,
-    turnIndex: 0,
-    turnNumber: 1,
-    turnPhase: 'PRE_ROLL',
-    lastDice: [6, 6],
-    doublesCount: 0,
-    lastCard: null,
-    winnerName: null,
-    players: [hostSeat],
-    properties: {},
-    logs: [
-      { time: Date.now(), text: `Room "${title}" created by @${myAccount.username}.` }
-    ],
-    activeTrade: null,
-    activeAuction: null,
-    pendingDebt: null
-  };
+    const hostSeat = createPlayerSeatObject(myAccount, startingCash, false, selectedTokenId);
 
-  currentRoomId = roomId;
-  document.getElementById('inputRoomTitle').value = '';
-  playSfx('buy');
-  showToast(`Room "${title}" created!`, 'emerald');
-  await saveRoomState(newRoom);
+    const newRoom = {
+      id: roomId,
+      title,
+      code,
+      hostUsername: myAccount.username,
+      status: 'waiting',
+      startingCash,
+      turnIndex: 0,
+      turnNumber: 1,
+      turnPhase: 'PRE_ROLL',
+      lastDice: [6, 6],
+      doublesCount: 0,
+      lastCard: null,
+      winnerName: null,
+      players: [hostSeat],
+      properties: {},
+      logs: [
+        { time: Date.now(), text: `Room "${title}" created by @${myAccount.username}.` }
+      ],
+      activeTrade: null,
+      activeAuction: null,
+      pendingDebt: null
+    };
+
+    currentRoomId = roomId;
+    document.getElementById('inputRoomTitle').value = '';
+    playSfx('buy');
+    showToast(`Room "${title}" created!`, 'emerald');
+    await saveRoomState(newRoom);
+  });
 }
 
-// NEW: Host can delete their room from Firestore & clean up invites
 async function deleteRoomById(roomId) {
   if (!myAccount) return;
   const room = allRoomsMap[roomId];
@@ -692,7 +697,6 @@ async function deleteRoomById(roomId) {
       deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_rooms', roomId)),
       'deleteRoom'
     );
-    // Clean up any invites associated with this room
     Object.values(allInvitesMap).forEach((inv) => {
       if (inv.roomId === roomId) {
         delete allInvitesMap[inv.id];
@@ -771,8 +775,11 @@ async function addHotseatSimulatedPlayer() {
     displayName: 'Guest ' + (room.players.length + 1)
   };
 
+  const takenTokens = room.players.map(p => p.token);
+  const availableToken = PLAYER_TOKENS.find(t => !takenTokens.includes(t.id));
+
   const seatIdx = room.players.length;
-  const newSeat = createPlayerSeatObject(pick, seatIdx, room.startingCash || 1500, true);
+  const newSeat = createPlayerSeatObject(pick, room.startingCash || 1500, true, availableToken ? availableToken.id : null);
   room.players.push(newSeat);
   room.logs.unshift({
     time: Date.now(),
@@ -783,13 +790,11 @@ async function addHotseatSimulatedPlayer() {
   await saveRoomState(room);
 }
 
-// FIXED: Fetches latest room state from Firestore and properly saves new player seat
 async function joinRoomById(roomId) {
   if (!myAccount) return;
 
   let room = allRoomsMap[roomId];
 
-  // Fetch freshest room snapshot from Firestore so we never overwrite another player
   if (isCloudConnected && db) {
     try {
       const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_rooms', roomId));
@@ -797,9 +802,7 @@ async function joinRoomById(roomId) {
         room = normalizeRoomData(snap.data());
         allRoomsMap[roomId] = room;
       }
-    } catch (e) {
-      console.warn("Could not fetch fresh room doc, using cached room:", e);
-    }
+    } catch (e) {}
   }
 
   if (!room) {
@@ -808,38 +811,45 @@ async function joinRoomById(roomId) {
   }
 
   const alreadyIn = room.players.some(p => p.username === myAccount.username);
-  if (!alreadyIn) {
-    if (room.players.length >= 8) {
-      showToast('This room is full (8/8 players)!', 'rose');
-      return;
-    }
-    const seatIdx = room.players.length;
-    const newSeat = createPlayerSeatObject(myAccount, seatIdx, room.startingCash || 1500, false);
+  if (alreadyIn) {
+    currentRoomId = roomId;
+    syncActiveRoomUI(room);
+    return;
+  }
+
+  if (room.players.length >= 8) {
+    showToast('This room is full (8/8 players)!', 'rose');
+    return;
+  }
+
+  const takenTokens = room.players.map(p => p.token);
+
+  openTokenPickerModal(takenTokens, async (selectedTokenId) => {
+    const newSeat = createPlayerSeatObject(myAccount, room.startingCash || 1500, false, selectedTokenId);
     room.players.push(newSeat);
     room.logs.unshift({
       time: Date.now(),
       text: `@${myAccount.username} joined the room (${room.players.length}/8).`
     });
-  }
 
-  // Remove the invite once accepted
-  const invId = `inv_${roomId}_${myAccount.username}`;
-  if (allInvitesMap[invId]) {
-    delete allInvitesMap[invId];
-    renderIncomingInvites();
-    if (isCloudConnected && db) {
-      safeCloudWrite(
-        deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_invites', invId)),
-        'deleteInvite'
-      );
+    const invId = `inv_${roomId}_${myAccount.username}`;
+    if (allInvitesMap[invId]) {
+      delete allInvitesMap[invId];
+      renderIncomingInvites();
+      if (isCloudConnected && db) {
+        safeCloudWrite(
+          deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_invites', invId)),
+          'deleteInvite'
+        );
+      }
     }
-  }
 
-  currentRoomId = roomId;
-  playSfx('buy');
-  showToast(`Joined room "${room.title}"!`, 'emerald');
-  await saveRoomState(room);
-  syncActiveRoomUI(room);
+    currentRoomId = roomId;
+    playSfx('buy');
+    showToast(`Joined room "${room.title}"!`, 'emerald');
+    await saveRoomState(room);
+    syncActiveRoomUI(room);
+  });
 }
 
 async function startRoomBoardGame() {
@@ -1005,7 +1015,6 @@ function renderLobbyViews() {
     document.getElementById('stagingRoomTitle').textContent = room.title;
     document.getElementById('stagingRoomCode').textContent = `ROOM CODE: ${room.code}`;
 
-    // Show player count + Delete Room button for the host
     const seatCounterEl = document.getElementById('stagingSeatCounter');
     seatCounterEl.innerHTML = `
       <span>${room.players.length} / 8 Players</span>
@@ -1165,90 +1174,102 @@ function buildCenterCommandHubHtml(room) {
   const d1 = room.lastDice ? room.lastDice[0] : 6;
   const d2 = room.lastDice ? room.lastDice[1] : 6;
 
+  const isMyTurn = myAccount && (
+    activePlayer.username === myAccount.username || 
+    (activePlayer.isSimulated && room.hostUsername === myAccount.username)
+  );
+
+  let phaseActionsHtml = '';
+
   if (room.status === 'finished' && room.winnerName) {
-    return `
+    phaseActionsHtml = `
       <div class="board-center items-center justify-center text-center p-6">
         <div class="text-5xl mb-3">🏆</div>
         <h2 class="text-2xl font-extrabold text-slate-900">GAME OVER!</h2>
         <p class="text-base font-bold text-emerald-800 mt-2">${room.winnerName} wins COPYPOLY!</p>
       </div>
     `;
-  }
-
-  let phaseActionsHtml = '';
-  if (room.turnPhase === 'PRE_ROLL') {
-    if (activePlayer.inJail) {
-      phaseActionsHtml = `
-        <div class="flex flex-wrap items-center justify-center gap-2">
-          <button id="btnRollDice" class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow">
-            Roll for Doubles (${activePlayer.jailTurns + 1}/3)
-          </button>
-          <button id="btnPayBail" ${activePlayer.money < 50 ? 'disabled' : ''} class="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-bold text-xs">
-            Pay $50 Bail
-          </button>
-          ${activePlayer.jailFreeCards > 0 ? `
-            <button id="btnUseJailCard" class="px-3.5 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-bold text-xs">
-              Use Jail Free Card
+  } else if (!isMyTurn) {
+    phaseActionsHtml = `
+      <div class="px-5 py-2.5 mt-2 rounded-lg bg-slate-800 border-2 border-slate-700 shadow-inner text-center">
+        <span class="text-amber-400 font-bold text-sm animate-pulse">Waiting for @${activePlayer.username} to move...</span>
+      </div>
+    `;
+  } else {
+    if (room.turnPhase === 'PRE_ROLL') {
+      if (activePlayer.inJail) {
+        phaseActionsHtml = `
+          <div class="flex flex-wrap items-center justify-center gap-2 mt-2">
+            <button id="btnRollDice" class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow">
+              Roll for Doubles (${activePlayer.jailTurns + 1}/3)
             </button>
-          ` : ''}
+            <button id="btnPayBail" ${activePlayer.money < 50 ? 'disabled' : ''} class="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-50 disabled:opacity-40 text-white font-bold text-xs">
+              Pay $50 Bail
+            </button>
+            ${activePlayer.jailFreeCards > 0 ? `
+              <button id="btnUseJailCard" class="px-3.5 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-bold text-xs">
+                Use Jail Free Card
+              </button>
+            ` : ''}
+          </div>
+        `;
+      } else {
+        phaseActionsHtml = `
+          <button id="btnRollDice" class="px-7 py-2.5 mt-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-sm shadow-md transition flex items-center gap-2">
+            <i class="fa-solid fa-dice"></i> Roll Dice
+          </button>
+        `;
+      }
+    } else if (room.turnPhase === 'BUY_DECISION') {
+      const canAfford = activePlayer.money >= currentTile.price;
+      phaseActionsHtml = `
+        <div class="flex flex-col items-center gap-2 mt-2">
+          <div class="text-xs font-bold text-slate-800">Unowned Property: <span>${currentTile.name} ($${currentTile.price})</span></div>
+          <div class="flex flex-wrap items-center justify-center gap-2">
+            <button id="btnBuyProperty" ${!canAfford ? 'disabled' : ''} class="px-5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white font-bold text-xs shadow">
+              Buy for $${currentTile.price}
+            </button>
+            <button id="btnStartAuction" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs">
+              Auction
+            </button>
+          </div>
         </div>
       `;
-    } else {
+    } else if (room.turnPhase === 'DEBT_RESOLUTION' && room.pendingDebt) {
+      const debt = room.pendingDebt;
+      const canPayNow = activePlayer.money >= debt.amount;
       phaseActionsHtml = `
-        <button id="btnRollDice" class="px-7 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-sm shadow-md transition flex items-center gap-2">
-          <i class="fa-solid fa-dice"></i> Roll Dice
-        </button>
+        <div class="bg-red-100 border-2 border-red-600 rounded-lg p-3 mt-2 text-center space-y-2 max-w-md">
+          <div class="text-xs font-bold text-red-900">
+            @${activePlayer.username} owes $${debt.amount} (${debt.reason})
+          </div>
+          <div class="text-[11px] text-red-800">Sell houses, mortgage properties, or trade to raise cash.</div>
+          <div class="flex items-center justify-center gap-2 pt-1">
+            <button id="btnPayPendingDebt" ${!canPayNow ? 'disabled' : ''} class="px-4 py-1.5 rounded bg-emerald-700 disabled:opacity-40 text-white font-bold text-xs">
+              Pay $${debt.amount}
+            </button>
+            <button id="btnDeclareBankruptcy" class="px-4 py-1.5 rounded bg-red-700 hover:bg-red-600 text-white font-bold text-xs">
+              Declare Bankruptcy
+            </button>
+          </div>
+        </div>
+      `;
+    } else if (room.turnPhase === 'POST_ROLL') {
+      const rolledDoubles = d1 === d2 && !activePlayer.inJail && room.doublesCount > 0;
+      phaseActionsHtml = `
+        <div class="flex flex-wrap items-center justify-center gap-2.5 mt-2">
+          ${rolledDoubles ? `
+            <button id="btnRollDice" class="px-6 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow">
+              Rolled Doubles! Roll Again
+            </button>
+          ` : `
+            <button id="btnEndTurn" class="px-6 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow">
+              End Turn <i class="fa-solid fa-forward-step ml-1"></i>
+            </button>
+          `}
+        </div>
       `;
     }
-  } else if (room.turnPhase === 'BUY_DECISION') {
-    const canAfford = activePlayer.money >= currentTile.price;
-    phaseActionsHtml = `
-      <div class="flex flex-col items-center gap-2">
-        <div class="text-xs font-bold text-slate-800">Unowned Property: <span>${currentTile.name} ($${currentTile.price})</span></div>
-        <div class="flex flex-wrap items-center justify-center gap-2">
-          <button id="btnBuyProperty" ${!canAfford ? 'disabled' : ''} class="px-5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white font-bold text-xs shadow">
-            Buy for $${currentTile.price}
-          </button>
-          <button id="btnStartAuction" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs">
-            Auction
-          </button>
-        </div>
-      </div>
-    `;
-  } else if (room.turnPhase === 'DEBT_RESOLUTION' && room.pendingDebt) {
-    const debt = room.pendingDebt;
-    const canPayNow = activePlayer.money >= debt.amount;
-    phaseActionsHtml = `
-      <div class="bg-red-100 border-2 border-red-600 rounded-lg p-3 text-center space-y-2 max-w-md">
-        <div class="text-xs font-bold text-red-900">
-          @${activePlayer.username} owes $${debt.amount} (${debt.reason})
-        </div>
-        <div class="text-[11px] text-red-800">Sell houses, mortgage properties, or trade to raise cash.</div>
-        <div class="flex items-center justify-center gap-2 pt-1">
-          <button id="btnPayPendingDebt" ${!canPayNow ? 'disabled' : ''} class="px-4 py-1.5 rounded bg-emerald-700 disabled:opacity-40 text-white font-bold text-xs">
-            Pay $${debt.amount}
-          </button>
-          <button id="btnDeclareBankruptcy" class="px-4 py-1.5 rounded bg-red-700 hover:bg-red-600 text-white font-bold text-xs">
-            Declare Bankruptcy
-          </button>
-        </div>
-      </div>
-    `;
-  } else if (room.turnPhase === 'POST_ROLL') {
-    const rolledDoubles = d1 === d2 && !activePlayer.inJail && room.doublesCount > 0;
-    phaseActionsHtml = `
-      <div class="flex flex-wrap items-center justify-center gap-2.5">
-        ${rolledDoubles ? `
-          <button id="btnRollDice" class="px-6 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow">
-            Rolled Doubles! Roll Again
-          </button>
-        ` : `
-          <button id="btnEndTurn" class="px-6 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow">
-            End Turn <i class="fa-solid fa-forward-step ml-1"></i>
-          </button>
-        `}
-      </div>
-    `;
   }
 
   return `
@@ -1292,7 +1313,7 @@ function buildCenterCommandHubHtml(room) {
           </div>
         </div>
 
-        <div class="text-xs text-slate-700 mb-3 text-center">
+        <div class="text-xs text-slate-700 mb-1 text-center">
           Current Space: <strong class="text-slate-950">${currentTile.name}</strong>
           ${activePlayer.inJail ? '<span class="ml-1 text-red-600 font-bold">(In Jail)</span>' : ''}
         </div>
@@ -1311,7 +1332,7 @@ function buildCenterCommandHubHtml(room) {
         <div class="text-xs text-slate-700 truncate">
           Click any property on the board to view its Title Deed or build houses.
         </div>
-        <button id="btnCenterProposeTrade" class="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition whitespace-nowrap shadow-sm">
+        <button id="btnCenterProposeTrade" class="px-3 py-1.5 rounded bg-amber-50 hover:bg-amber-100 border border-amber-500 text-amber-900 font-bold text-xs transition whitespace-nowrap shadow-sm">
           Trade
         </button>
       </div>
@@ -1896,7 +1917,7 @@ async function handleToggleMortgage(room, tileId) {
 }
 
 // ============================================================================
-// 9. SIDEBARS & CLASSIC WHITE PAPER TITLE DEED INSPECTOR
+// 9. SIDEBARS & TITLE DEED INSPECTOR
 // ============================================================================
 function renderPlayerRoster(room) {
   const container = document.getElementById('gamePlayerRoster');
@@ -2059,31 +2080,47 @@ function renderDeedInspector(room, tileId) {
 
   let manageControlsHtml = '';
   if (owner) {
-    const canBuild = canBuildHouseOnTile(room, tile, owner.username);
-    const canSell = canSellHouseOnTile(room, tile, owner.username);
-    const unmortCost = Math.ceil((tile.price / 2) * 1.1);
+    const isMe = myAccount && (
+      owner.username === myAccount.username ||
+      (owner.isSimulated && room.hostUsername === myAccount.username)
+    );
 
-    manageControlsHtml = `
-      <div class="space-y-2 pt-2 border-t border-slate-300 text-slate-900">
-        <div class="flex items-center justify-between text-xs">
-          <span class="text-slate-600">Owner:</span>
-          <span class="font-bold">${owner.emoji} @${owner.username}</span>
+    if (isMe) {
+      const canBuild = canBuildHouseOnTile(room, tile, owner.username);
+      const canSell = canSellHouseOnTile(room, tile, owner.username);
+      const unmortCost = Math.ceil((tile.price / 2) * 1.1);
+
+      manageControlsHtml = `
+        <div class="space-y-2 pt-2 border-t border-slate-300 text-slate-900">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">Owner:</span>
+            <span class="font-bold text-emerald-800">${owner.emoji} @${owner.username} (You)</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            ${tile.type === 'prop' ? `
+              <button id="btnInspectorBuild" ${!canBuild ? 'disabled' : ''} class="px-2.5 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 disabled:opacity-30 text-white font-bold text-xs transition">
+                + House ($${tile.houseCost})
+              </button>
+              <button id="btnInspectorSell" ${!canSell ? 'disabled' : ''} class="px-2.5 py-1.5 rounded bg-amber-600 hover:bg-amber-500 disabled:opacity-30 text-white font-bold text-xs transition">
+                - Sell (+$${Math.floor(tile.houseCost / 2)})
+              </button>
+            ` : ''}
+          </div>
+          <button id="btnInspectorMortgage" class="w-full py-1.5 rounded font-bold text-xs border border-slate-400 bg-slate-100 hover:bg-slate-200 text-slate-800 transition">
+            ${st.mortgaged ? `Unmortgage (-$${unmortCost})` : `Mortgage (+$${Math.floor(tile.price / 2)})`}
+          </button>
         </div>
-        <div class="grid grid-cols-2 gap-2">
-          ${tile.type === 'prop' ? `
-            <button id="btnInspectorBuild" ${!canBuild ? 'disabled' : ''} class="px-2.5 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 disabled:opacity-30 text-white font-bold text-xs transition">
-              + House ($${tile.houseCost})
-            </button>
-            <button id="btnInspectorSell" ${!canSell ? 'disabled' : ''} class="px-2.5 py-1.5 rounded bg-amber-600 hover:bg-amber-500 disabled:opacity-30 text-white font-bold text-xs transition">
-              - Sell (+$${Math.floor(tile.houseCost / 2)})
-            </button>
-          ` : ''}
+      `;
+    } else {
+      manageControlsHtml = `
+        <div class="pt-2 border-t border-slate-300 text-slate-900 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-600">Owner:</span>
+            <span class="font-bold">${owner.emoji} @${owner.username}</span>
+          </div>
         </div>
-        <button id="btnInspectorMortgage" class="w-full py-1.5 rounded font-bold text-xs border border-slate-400 bg-slate-100 hover:bg-slate-200 text-slate-800 transition">
-          ${st.mortgaged ? `Unmortgage (-$${unmortCost})` : `Mortgage (+$${Math.floor(tile.price / 2)})`}
-        </button>
-      </div>
-    `;
+      `;
+    }
   } else {
     manageControlsHtml = `
       <div class="text-center py-1.5 px-3 rounded bg-slate-100 border border-slate-300 text-xs text-slate-700">
@@ -2126,26 +2163,42 @@ function renderActivityLog(room) {
 }
 
 // ============================================================================
-// 10. PLAYER-TO-PLAYER TRADING & AUCTION MODALS
+// 10. PLAYER-TO-PLAYER TRADING & AUCTION MODALS (FIXED PERMISSIONS)
 // ============================================================================
 function openTradeHubModal(room, defaultPartnerUsername = null) {
   const modal = document.getElementById('modalTradeHub');
   const activePlayers = room.players.filter(p => !p.bankrupt);
+  
+  if (!myAccount) return;
+  const amIPlaying = activePlayers.some(p => p.username === myAccount.username);
+
+  // If you aren't in the game, you can't propose trades
+  if (!amIPlaying) {
+    showToast("Spectators cannot propose trades.", "rose");
+    return;
+  }
+
   if (activePlayers.length < 2) return;
 
   const selFrom = document.getElementById('selectTradeFromPlayer');
   const selTo = document.getElementById('selectTradeToPlayer');
 
-  const defaultFrom = (myAccount && activePlayers.some(p => p.username === myAccount.username))
-    ? myAccount.username
-    : room.players[room.turnIndex].username;
+  // Player 1 Offers is permanently locked to YOU
+  const defaultFrom = myAccount.username;
+  const fromChoices = activePlayers.filter(p => p.username === defaultFrom);
+  
+  selFrom.innerHTML = fromChoices.map(p => `<option value="${p.username}" selected>@${p.username} (You)</option>`).join('');
+  selFrom.disabled = true; // Lock the dropdown
 
-  const defaultTo = defaultPartnerUsername && defaultPartnerUsername !== defaultFrom
+  // Player 2 Gives is everyone EXCEPT you
+  const toChoices = activePlayers.filter(p => p.username !== defaultFrom);
+  if (toChoices.length === 0) return;
+
+  const defaultTo = defaultPartnerUsername && toChoices.some(p => p.username === defaultPartnerUsername)
     ? defaultPartnerUsername
-    : (activePlayers.find(p => p.username !== defaultFrom)?.username || activePlayers[0].username);
+    : toChoices[0].username;
 
-  selFrom.innerHTML = activePlayers.map(p => `<option value="${p.username}" ${p.username === defaultFrom ? 'selected' : ''}>@${p.username} ($${p.money})</option>`).join('');
-  selTo.innerHTML = activePlayers.map(p => `<option value="${p.username}" ${p.username === defaultTo ? 'selected' : ''}>@${p.username} ($${p.money})</option>`).join('');
+  selTo.innerHTML = toChoices.map(p => `<option value="${p.username}" ${p.username === defaultTo ? 'selected' : ''}>@${p.username} ($${p.money})</option>`).join('');
 
   const refreshTradeCheckboxes = () => {
     const fromUser = selFrom.value;
@@ -2303,42 +2356,53 @@ function syncTradeAndAuctionModals(room) {
   const tradeModal = document.getElementById('modalIncomingTrade');
   if (room.activeTrade) {
     const tr = room.activeTrade;
-    tradeModal.classList.remove('hidden');
-    document.getElementById('incomingTradeSubtitle').textContent = `@${tr.from} ⇄ @${tr.to}`;
+    
+    // Only show the trade modal if you are the one receiving the trade (or if you are the host controlling a bot)
+    const amITarget = myAccount && (
+      tr.to === myAccount.username || 
+      (room.hostUsername === myAccount.username && room.players.find(p => p.username === tr.to)?.isSimulated)
+    );
 
-    const formatProps = (ids) => {
-      if (!ids || ids.length === 0) return '<div class="text-slate-400 text-xs">No properties</div>';
-      return ids.map(id => {
-        const t = BOARD_TILES[id];
-        const grp = GROUP_COLORS[t.group] || { hex: '#64748b' };
-        return `<div class="flex items-center gap-1.5 text-xs text-white font-semibold"><span class="w-2.5 h-2.5 rounded-sm" style="background:${grp.hex}"></span>${t.name}</div>`;
-      }).join('');
-    };
+    if (amITarget) {
+      tradeModal.classList.remove('hidden');
+      document.getElementById('incomingTradeSubtitle').textContent = `@${tr.from} ⇄ @${tr.to}`;
 
-    document.getElementById('incomingTradeBody').innerHTML = `
-      <div class="p-3 rounded-lg bg-slate-900 border border-slate-700 space-y-1.5">
-        <div class="text-xs font-bold text-emerald-400">@${tr.from} Offers:</div>
-        <div class="text-sm font-bold text-white">$${tr.offerCash} Cash</div>
-        <div class="space-y-1 pt-1 border-t border-slate-800">${formatProps(tr.offerProps)}</div>
-      </div>
-      <div class="p-3 rounded-lg bg-slate-900 border border-slate-700 space-y-1.5">
-        <div class="text-xs font-bold text-sky-400">@${tr.to} Gives:</div>
-        <div class="text-sm font-bold text-white">$${tr.requestCash} Cash</div>
-        <div class="space-y-1 pt-1 border-t border-slate-800">${formatProps(tr.requestProps)}</div>
-      </div>
-    `;
+      const formatProps = (ids) => {
+        if (!ids || ids.length === 0) return '<div class="text-slate-400 text-xs">No properties</div>';
+        return ids.map(id => {
+          const t = BOARD_TILES[id];
+          const grp = GROUP_COLORS[t.group] || { hex: '#64748b' };
+          return `<div class="flex items-center gap-1.5 text-xs text-white font-semibold"><span class="w-2.5 h-2.5 rounded-sm" style="background:${grp.hex}"></span>${t.name}</div>`;
+        }).join('');
+      };
 
-    document.getElementById('incomingTradeActions').innerHTML = `
-      <button id="btnDeclineTradeOffer" class="px-4 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 font-bold text-xs">
-        Decline
-      </button>
-      <button id="btnAcceptTradeOffer" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow">
-        Accept Trade
-      </button>
-    `;
+      document.getElementById('incomingTradeBody').innerHTML = `
+        <div class="p-3 rounded-lg bg-slate-900 border border-slate-700 space-y-1.5">
+          <div class="text-xs font-bold text-emerald-400">@${tr.from} Offers:</div>
+          <div class="text-sm font-bold text-white">$${tr.offerCash} Cash</div>
+          <div class="space-y-1 pt-1 border-t border-slate-800">${formatProps(tr.offerProps)}</div>
+        </div>
+        <div class="p-3 rounded-lg bg-slate-900 border border-slate-700 space-y-1.5">
+          <div class="text-xs font-bold text-sky-400">@${tr.to} Gives:</div>
+          <div class="text-sm font-bold text-white">$${tr.requestCash} Cash</div>
+          <div class="space-y-1 pt-1 border-t border-slate-800">${formatProps(tr.requestProps)}</div>
+        </div>
+      `;
 
-    document.getElementById('btnAcceptTradeOffer').onclick = () => executeAcceptActiveTrade(room);
-    document.getElementById('btnDeclineTradeOffer').onclick = () => executeDeclineActiveTrade(room);
+      document.getElementById('incomingTradeActions').innerHTML = `
+        <button id="btnDeclineTradeOffer" class="px-4 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 font-bold text-xs">
+          Decline
+        </button>
+        <button id="btnAcceptTradeOffer" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow">
+          Accept Trade
+        </button>
+      `;
+
+      document.getElementById('btnAcceptTradeOffer').onclick = () => executeAcceptActiveTrade(room);
+      document.getElementById('btnDeclineTradeOffer').onclick = () => executeDeclineActiveTrade(room);
+    } else {
+      tradeModal.classList.add('hidden');
+    }
   } else {
     tradeModal.classList.add('hidden');
   }
@@ -2356,6 +2420,13 @@ function syncTradeAndAuctionModals(room) {
     const biddersHtml = room.players.filter(p => !p.bankrupt).map(p => {
       const next10 = auc.highBid + 10;
       const next50 = auc.highBid + 50;
+      
+      // Only show your own bid buttons (or bots if you are host)
+      const canIBid = myAccount && (
+        p.username === myAccount.username || 
+        (p.isSimulated && room.hostUsername === myAccount.username)
+      );
+
       return `
         <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-between gap-2">
           <div class="min-w-0">
@@ -2363,14 +2434,16 @@ function syncTradeAndAuctionModals(room) {
             <div class="text-[11px] text-emerald-400">$${p.money}</div>
           </div>
           <div class="flex items-center gap-1">
-            <button data-user="${p.username}" data-bid="${next10}" ${p.money < next10 ? 'disabled' : ''}
-              class="btn-auction-bid px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-white font-bold text-xs">
-              +$10
-            </button>
-            <button data-user="${p.username}" data-bid="${next50}" ${p.money < next50 ? 'disabled' : ''}
-              class="btn-auction-bid px-2 py-1 rounded bg-sky-600 hover:bg-sky-500 disabled:opacity-30 text-white font-bold text-xs">
-              +$50
-            </button>
+            ${canIBid ? `
+              <button data-user="${p.username}" data-bid="${next10}" ${p.money < next10 ? 'disabled' : ''}
+                class="btn-auction-bid px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-white font-bold text-xs">
+                +$10
+              </button>
+              <button data-user="${p.username}" data-bid="${next50}" ${p.money < next50 ? 'disabled' : ''}
+                class="btn-auction-bid px-2 py-1 rounded bg-sky-600 hover:bg-sky-500 disabled:opacity-30 text-white font-bold text-xs">
+                +$50
+              </button>
+            ` : '<span class="text-[10px] text-slate-500">Waiting...</span>'}
           </div>
         </div>
       `;
@@ -2387,25 +2460,34 @@ function syncTradeAndAuctionModals(room) {
       });
     });
 
-    document.getElementById('btnFinalizeAuction').onclick = async () => {
-      const winner = room.players.find(p => p.username === auc.highBidder);
-      if (winner && winner.money >= auc.highBid) {
-        winner.money -= auc.highBid;
-        room.properties[auc.tileId] = {
-          owner: winner.username,
-          houses: 0,
-          mortgaged: false
-        };
-        room.logs.unshift({
-          time: Date.now(),
-          text: `@${winner.username} won ${tile.name} at auction for $${auc.highBid}!`
-        });
-      }
-      room.activeAuction = null;
-      room.turnPhase = 'POST_ROLL';
-      playSfx('buy');
-      await saveRoomState(room);
-    };
+    const isHost = myAccount && room.hostUsername === myAccount.username;
+    const btnFinalize = document.getElementById('btnFinalizeAuction');
+    
+    // Only host can hammer down the auction
+    if (isHost) {
+      btnFinalize.style.display = 'block';
+      btnFinalize.onclick = async () => {
+        const winner = room.players.find(p => p.username === auc.highBidder);
+        if (winner && winner.money >= auc.highBid) {
+          winner.money -= auc.highBid;
+          room.properties[auc.tileId] = {
+            owner: winner.username,
+            houses: 0,
+            mortgaged: false
+          };
+          room.logs.unshift({
+            time: Date.now(),
+            text: `@${winner.username} won ${tile.name} at auction for $${auc.highBid}!`
+          });
+        }
+        room.activeAuction = null;
+        room.turnPhase = 'POST_ROLL';
+        playSfx('buy');
+        await saveRoomState(room);
+      };
+    } else {
+      btnFinalize.style.display = 'none';
+    }
   } else {
     auctionModal.classList.add('hidden');
   }
