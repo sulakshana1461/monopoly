@@ -204,7 +204,7 @@ let selectedInspectTileId = 39;
 let selectedPortfolioPlayerId = null;
 let authMode = 'register';
 let isRollingAnim = false;
-let globalAuctionInterval = null; // Used to manage the live auction timer
+let globalAuctionInterval = null;
 
 function updateDbIndicator(status, labelText, diagnosticDetail) {
   const dot = document.getElementById('dbStatusDot');
@@ -233,11 +233,7 @@ async function safeCloudWrite(writePromise, contextLabel) {
     await writePromise;
   } catch (err) {
     console.error(`Firestore write error (${contextLabel}):`, err);
-    updateDbIndicator(
-      'offline',
-      'DB Rules Error',
-      `Firestore blocked saving (${err.code || err.message}). Go to Firebase Console -> Firestore -> Rules and set "allow read, write: if true;"`
-    );
+    updateDbIndicator('offline', 'DB Rules Error', `Firestore blocked saving (${err.code || err.message}).`);
     showToast(`Cloud sync warning: ${err.code || err.message}`, 'amber');
   }
 }
@@ -258,11 +254,7 @@ async function initDatabaseAndAuth() {
     if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
       currentUser = { uid: 'local-' + Math.random().toString(36).slice(2, 9) };
       isCloudConnected = false;
-      updateDbIndicator(
-        'offline',
-        'Local Mode (No Keys)',
-        'Running in Local Mode. Paste your real Firebase config keys into MY_FIREBASE_CONFIG at the top of script.js.'
-      );
+      updateDbIndicator('offline', 'Local Mode (No Keys)', 'Paste your real Firebase config keys into MY_FIREBASE_CONFIG.');
       return;
     }
 
@@ -282,11 +274,7 @@ async function initDatabaseAndAuth() {
 
     setTimeout(() => {
       if (!hasReceivedFirstSnapshot && isCloudConnected) {
-        updateDbIndicator(
-          'offline',
-          'Check Firestore Setup',
-          'Firebase initialized, but Firestore has not responded yet. Make sure you clicked "Create Database" inside Firestore and enabled Test Mode!'
-        );
+        updateDbIndicator('offline', 'Check Firestore Setup', 'Firebase initialized, but Firestore has not responded yet. Enable Test Mode!');
       }
     }, 5000);
 
@@ -307,18 +295,10 @@ function setupRealtimeListeners(projectId) {
     snap.forEach((d) => { nextMap[d.id] = d.data(); });
     registeredUsersMap = nextMap;
     renderRegisteredUsersDirectory();
-    updateDbIndicator(
-      'connected',
-      'DB Connected',
-      `Connected to Firebase project "${projectId || 'cloud'}" (${Object.keys(registeredUsersMap).length} users).`
-    );
+    updateDbIndicator('connected', 'DB Connected', `Connected to Firebase project "${projectId || 'cloud'}"`);
   }, (err) => {
     console.error("Firestore users listener error:", err);
-    updateDbIndicator(
-      'offline',
-      'DB Blocked / Rules',
-      `Firestore Error: ${err.message}. Check Firebase Console -> Firestore -> Rules and allow read, write: if true;`
-    );
+    updateDbIndicator('offline', 'DB Blocked / Rules', `Firestore Error: ${err.message}. Check Rules.`);
   });
 
   onSnapshot(colRooms(), (snap) => {
@@ -383,9 +363,14 @@ function normalizeRoomData(raw) {
     try { room.pendingDebt = JSON.parse(room.pendingDebtJson); } catch (e) { room.pendingDebt = null; }
     delete room.pendingDebtJson;
   }
+  if (typeof room.endGameVotesJson === 'string') {
+    try { room.endGameVotes = JSON.parse(room.endGameVotesJson); } catch (e) { room.endGameVotes = []; }
+    delete room.endGameVotesJson;
+  }
   room.players = Array.isArray(room.players) ? room.players : [];
   room.properties = (room.properties && typeof room.properties === 'object') ? room.properties : {};
   room.logs = Array.isArray(room.logs) ? room.logs : [];
+  room.endGameVotes = Array.isArray(room.endGameVotes) ? room.endGameVotes : [];
   return room;
 }
 
@@ -419,7 +404,8 @@ async function saveRoomState(room) {
       logsJson: JSON.stringify((normalized.logs || []).slice(0, 60)),
       activeTradeJson: JSON.stringify(normalized.activeTrade || null),
       activeAuctionJson: JSON.stringify(normalized.activeAuction || null),
-      pendingDebtJson: JSON.stringify(normalized.pendingDebt || null)
+      pendingDebtJson: JSON.stringify(normalized.pendingDebt || null),
+      endGameVotesJson: JSON.stringify(normalized.endGameVotes || [])
     };
     await safeCloudWrite(
       setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_rooms', normalized.id), payload),
@@ -675,7 +661,8 @@ async function handleCreateRoom(e) {
       ],
       activeTrade: null,
       activeAuction: null,
-      pendingDebt: null
+      pendingDebt: null,
+      endGameVotes: []
     };
 
     currentRoomId = roomId;
@@ -878,6 +865,7 @@ async function startRoomBoardGame() {
   room.turnIndex = 0;
   room.turnNumber = 1;
   room.turnPhase = 'PRE_ROLL';
+  room.endGameVotes = [];
   
   if (!room.logs) room.logs = [];
   room.logs.unshift({
@@ -889,6 +877,9 @@ async function startRoomBoardGame() {
   await saveRoomState(room);
 }
 
+// ============================================================================
+// LOBBY RENDERING FUNCTIONS
+// ============================================================================
 function renderRegisteredUsersDirectory() {
   const container = document.getElementById('listRegisteredUsers');
   if (!container) return;
@@ -1202,11 +1193,113 @@ function renderMonopolyGrid(room) {
   bindCenterHubEvents(room);
 }
 
+// ----------------------------------------------------------------------------
+// NEW: VOTE TO END GAME / LEADERBOARD LOGIC
+// ----------------------------------------------------------------------------
+function calculateNetWorth(room, player) {
+  let nw = player.money || 0;
+  Object.entries(room.properties || {}).forEach(([tid, st]) => {
+    if (st.owner === player.username) {
+      const tile = BOARD_TILES.find(t => t.id == tid);
+      if (tile) {
+        if (st.mortgaged) {
+          nw += Math.floor(tile.price / 2);
+        } else {
+          nw += tile.price;
+          if (st.houses > 0) {
+            nw += st.houses * (tile.houseCost || 0);
+          }
+        }
+      }
+    }
+  });
+  return nw;
+}
+
+async function executeVoteEndGame(room) {
+  if (!myAccount) return;
+  
+  if (!room.endGameVotes) room.endGameVotes = [];
+  
+  // Add my vote
+  if (!room.endGameVotes.includes(myAccount.username)) {
+    room.endGameVotes.push(myAccount.username);
+    playSfx('cash');
+    if (!room.logs) room.logs = [];
+    room.logs.unshift({ time: Date.now(), text: `@${myAccount.username} voted to end the game early and tally scores.` });
+  }
+
+  // Auto-vote for any bots in the game so they don't block the end game
+  (room.players || []).forEach(p => {
+    if (p.isSimulated && !p.bankrupt && !room.endGameVotes.includes(p.username)) {
+      room.endGameVotes.push(p.username);
+    }
+  });
+
+  const activePlayers = (room.players || []).filter(p => !p.bankrupt);
+  const votesNeeded = Math.floor(activePlayers.length / 2) + 1;
+
+  if (room.endGameVotes.length >= votesNeeded) {
+    room.status = 'finished';
+    
+    // Rank players
+    const rankedPlayers = activePlayers.map(p => ({
+      ...p,
+      nw: calculateNetWorth(room, p)
+    })).sort((a, b) => b.nw - a.nw);
+    
+    room.winnerName = `${rankedPlayers[0].displayName} (@${rankedPlayers[0].username})`;
+    room.logs.unshift({ time: Date.now(), text: `Majority vote reached! @${rankedPlayers[0].username} wins by Net Worth!` });
+    playSfx('trade');
+  } else {
+    showToast(`Vote logged! Need ${votesNeeded} total votes to end game.`, 'cyan');
+  }
+  
+  await saveRoomState(room);
+}
+
 function buildCenterCommandHubHtml(room) {
   const activePlayer = (room.players || [])[room.turnIndex || 0] || { username: 'unknown', position: 0, money: 0 };
   const currentTile = BOARD_TILES[activePlayer.position || 0];
   const d1 = room.lastDice ? room.lastDice[0] : 6;
   const d2 = room.lastDice ? room.lastDice[1] : 6;
+
+  // LEADERBOARD RENDER
+  if (room.status === 'finished') {
+    const activeSurvivors = (room.players || []).filter(p => !p.bankrupt);
+    const ranked = activeSurvivors.map(p => ({
+      ...p,
+      nw: calculateNetWorth(room, p)
+    })).sort((a,b) => b.nw - a.nw);
+
+    const lbRows = ranked.map((p, i) => `
+      <div class="flex items-center justify-between p-2.5 rounded-lg ${i === 0 ? 'bg-amber-100 border-2 border-amber-400' : 'bg-white border border-slate-300'} mb-2 shadow-sm">
+        <div class="flex items-center gap-3">
+          <span class="font-extrabold text-sm ${i === 0 ? 'text-amber-600' : 'text-slate-400'}">#${i+1}</span>
+          <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs" style="background:${p.color}30; border:1px solid ${p.color}">
+            ${p.emoji}
+          </div>
+          <span class="text-sm font-bold text-slate-900">${p.displayName}</span>
+        </div>
+        <div class="text-base font-extrabold ${i === 0 ? 'text-emerald-700' : 'text-slate-700'}">$${p.nw}</div>
+      </div>
+    `).join('');
+
+    return `
+      <div class="board-center items-center justify-center p-3">
+        <div class="bg-slate-50 border-2 border-slate-800 rounded-xl shadow-2xl w-full max-w-sm flex flex-col h-full overflow-hidden">
+          <div class="text-center py-3 bg-slate-900 text-white shadow-md z-10">
+            <div class="text-3xl mb-1">🏆</div>
+            <h2 class="text-lg font-extrabold tracking-wide">FINAL LEADERBOARD</h2>
+            <p class="text-[10px] text-slate-400 uppercase">Ranked by Total Net Worth</p>
+          </div>
+          <div class="flex-1 overflow-y-auto p-3 bg-slate-100">
+            ${lbRows}
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   const isMyTurn = myAccount && activePlayer.username && (
     activePlayer.username === myAccount.username || 
@@ -1215,15 +1308,7 @@ function buildCenterCommandHubHtml(room) {
 
   let phaseActionsHtml = '';
 
-  if (room.status === 'finished' && room.winnerName) {
-    phaseActionsHtml = `
-      <div class="board-center items-center justify-center text-center p-6">
-        <div class="text-5xl mb-3">🏆</div>
-        <h2 class="text-2xl font-extrabold text-slate-900">GAME OVER!</h2>
-        <p class="text-base font-bold text-emerald-800 mt-2">${room.winnerName} wins COPYPOLY!</p>
-      </div>
-    `;
-  } else if (!isMyTurn) {
+  if (!isMyTurn) {
     phaseActionsHtml = `
       <div class="px-5 py-2.5 mt-2 rounded-lg bg-slate-800 border-2 border-slate-700 shadow-inner text-center">
         <span class="text-amber-400 font-bold text-sm animate-pulse">Waiting for @${activePlayer.username} to move...</span>
@@ -1306,6 +1391,13 @@ function buildCenterCommandHubHtml(room) {
     }
   }
 
+  // Vote Button State logic
+  const myVote = room.endGameVotes && myAccount && room.endGameVotes.includes(myAccount.username);
+  const endBtnText = myVote ? 'Voted to End' : 'Vote to End Game';
+  const endBtnClass = myVote 
+    ? 'bg-red-200 border-red-300 text-red-700 opacity-75 cursor-not-allowed' 
+    : 'bg-red-100 hover:bg-red-200 border-red-300 text-red-900 shadow-sm';
+
   return `
     <div class="board-center">
       <div class="flex items-center justify-between gap-3">
@@ -1362,12 +1454,15 @@ function buildCenterCommandHubHtml(room) {
         ` : ''}
       </div>
 
-      <div class="flex items-center justify-between gap-2 bg-white/90 border-2 border-slate-800 rounded-lg px-3 py-2">
-        <div class="text-xs text-slate-700 truncate">
-          Click any property on the board to view its Title Deed or build houses.
+      <div class="flex items-center justify-between gap-1.5 bg-white/90 border-2 border-slate-800 rounded-lg px-2 py-1.5">
+        <button id="btnVoteEndGame" ${myVote ? 'disabled' : ''} class="px-2 py-1.5 rounded font-bold text-[10px] uppercase border transition ${endBtnClass}" title="End the game and calculate final Net Worth">
+          ${endBtnText}
+        </button>
+        <div class="text-[10px] font-semibold text-slate-600 text-center flex-1 leading-tight px-1">
+          Click board properties to view Deeds or Build.
         </div>
-        <button id="btnCenterProposeTrade" class="px-3 py-1.5 rounded bg-amber-50 hover:bg-amber-100 border border-amber-500 text-amber-900 font-bold text-xs transition whitespace-nowrap shadow-sm">
-          Trade
+        <button id="btnCenterProposeTrade" class="px-3 py-1.5 rounded bg-amber-50 hover:bg-amber-100 border border-amber-500 text-amber-900 font-bold text-[11px] uppercase transition shadow-sm">
+          Trade Hub
         </button>
       </div>
     </div>
@@ -1401,6 +1496,9 @@ function bindCenterHubEvents(room) {
 
   const btnTrade = document.getElementById('btnCenterProposeTrade');
   if (btnTrade) btnTrade.addEventListener('click', () => openTradeHubModal(room));
+
+  const btnVoteEnd = document.getElementById('btnVoteEndGame');
+  if (btnVoteEnd) btnVoteEnd.addEventListener('click', () => executeVoteEndGame(room));
 }
 
 // ============================================================================
@@ -1754,9 +1852,6 @@ async function executeBuyProperty(room) {
   await saveRoomState(room);
 }
 
-// ----------------------------------------------------------------------------
-// NEW AUCTION LOGIC: Starts a 30-Second live timer
-// ----------------------------------------------------------------------------
 async function executeStartAuction(room) {
   const player = room.players[room.turnIndex];
   const tile = BOARD_TILES[player.position];
@@ -1765,7 +1860,7 @@ async function executeStartAuction(room) {
     tileId: tile.id,
     highBid: 10,
     highBidder: player.username,
-    endTime: Date.now() + 60000 // 60 seconds from now
+    endTime: Date.now() + 60000
   };
   
   playSfx('trade');
@@ -2437,7 +2532,7 @@ function syncTradeAndAuctionModals(room) {
         <button id="btnDeclineTradeOffer" class="px-4 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 font-bold text-xs">
           Decline
         </button>
-        <button id="btnAcceptTradeOffer" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow">
+        <button id="btnAcceptTradeOffer" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-50 text-white font-bold text-xs shadow">
           Accept Trade
         </button>
       `;
@@ -2451,7 +2546,6 @@ function syncTradeAndAuctionModals(room) {
     tradeModal.classList.add('hidden');
   }
 
-  // Live Auction Logic
   const auctionModal = document.getElementById('modalAuction');
   if (globalAuctionInterval) {
     clearInterval(globalAuctionInterval);
@@ -2506,7 +2600,6 @@ function syncTradeAndAuctionModals(room) {
           room.activeAuction.highBidder = btn.dataset.user;
           room.activeAuction.highBid = parseInt(btn.dataset.bid, 10);
           
-          // Anti-Snipe: If less than 10 seconds left, push it back to 10 seconds
           const now = Date.now();
           if (room.activeAuction.endTime - now < 30000) {
             room.activeAuction.endTime = now + 30000;
@@ -2518,15 +2611,14 @@ function syncTradeAndAuctionModals(room) {
       });
     }
 
-    // 30-Second Countdown Logic
     const btnFinalize = document.getElementById('btnFinalizeAuction');
     if (btnFinalize) {
-      btnFinalize.disabled = true; // No one can click this manually anymore
+      btnFinalize.disabled = true;
       btnFinalize.classList.add('opacity-75', 'cursor-not-allowed');
       btnFinalize.classList.remove('hover:bg-emerald-500');
 
       const isHost = myAccount && room.hostUsername === myAccount.username;
-      const endTime = auc.endTime || (Date.now() + 90000);
+      const endTime = auc.endTime || (Date.now() + 60000);
 
       globalAuctionInterval = setInterval(() => {
         const timeLeft = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
@@ -2537,7 +2629,6 @@ function syncTradeAndAuctionModals(room) {
           btnFinalize.textContent = `Awarding...`;
           clearInterval(globalAuctionInterval);
           
-          // Only the Host's browser handles the final DB save to prevent duplicates
           if (isHost && room.activeAuction) {
             const winner = room.players.find(p => p.username === auc.highBidder);
             if (winner && winner.money >= auc.highBid) {
@@ -2561,7 +2652,6 @@ function syncTradeAndAuctionModals(room) {
             room.turnPhase = 'POST_ROLL';
             playSfx('buy');
             
-            // Standard call to save (no await needed since we are in setInterval)
             saveRoomState(room); 
           }
         }
@@ -2615,10 +2705,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   const startBtn = document.getElementById('btnStartBoardGame');
   if (startBtn) startBtn.addEventListener('click', startRoomBoardGame);
 
-  document.getElementById('btnOpenTradeHubSidebar').addEventListener('click', () => {
-    if (currentRoomId && allRoomsMap[currentRoomId]) openTradeHubModal(allRoomsMap[currentRoomId]);
-  });
-  
   const btnClose = document.getElementById('btnCloseTradeModal');
   if (btnClose) btnClose.addEventListener('click', () => {
     document.getElementById('modalTradeHub').classList.add('hidden');
