@@ -204,6 +204,7 @@ let selectedInspectTileId = 39;
 let selectedPortfolioPlayerId = null;
 let authMode = 'register';
 let isRollingAnim = false;
+let globalAuctionInterval = null; // Used to manage the live auction timer
 
 function updateDbIndicator(status, labelText, diagnosticDetail) {
   const dot = document.getElementById('dbStatusDot');
@@ -232,7 +233,11 @@ async function safeCloudWrite(writePromise, contextLabel) {
     await writePromise;
   } catch (err) {
     console.error(`Firestore write error (${contextLabel}):`, err);
-    updateDbIndicator('offline', 'DB Rules Error', `Firestore blocked saving (${err.code || err.message}).`);
+    updateDbIndicator(
+      'offline',
+      'DB Rules Error',
+      `Firestore blocked saving (${err.code || err.message}). Go to Firebase Console -> Firestore -> Rules and set "allow read, write: if true;"`
+    );
     showToast(`Cloud sync warning: ${err.code || err.message}`, 'amber');
   }
 }
@@ -253,7 +258,11 @@ async function initDatabaseAndAuth() {
     if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
       currentUser = { uid: 'local-' + Math.random().toString(36).slice(2, 9) };
       isCloudConnected = false;
-      updateDbIndicator('offline', 'Local Mode (No Keys)', 'Paste your real Firebase config keys into MY_FIREBASE_CONFIG.');
+      updateDbIndicator(
+        'offline',
+        'Local Mode (No Keys)',
+        'Running in Local Mode. Paste your real Firebase config keys into MY_FIREBASE_CONFIG at the top of script.js.'
+      );
       return;
     }
 
@@ -273,7 +282,11 @@ async function initDatabaseAndAuth() {
 
     setTimeout(() => {
       if (!hasReceivedFirstSnapshot && isCloudConnected) {
-        updateDbIndicator('offline', 'Check Firestore Setup', 'Firebase initialized, but Firestore has not responded yet. Enable Test Mode!');
+        updateDbIndicator(
+          'offline',
+          'Check Firestore Setup',
+          'Firebase initialized, but Firestore has not responded yet. Make sure you clicked "Create Database" inside Firestore and enabled Test Mode!'
+        );
       }
     }, 5000);
 
@@ -294,10 +307,18 @@ function setupRealtimeListeners(projectId) {
     snap.forEach((d) => { nextMap[d.id] = d.data(); });
     registeredUsersMap = nextMap;
     renderRegisteredUsersDirectory();
-    updateDbIndicator('connected', 'DB Connected', `Connected to Firebase project "${projectId || 'cloud'}"`);
+    updateDbIndicator(
+      'connected',
+      'DB Connected',
+      `Connected to Firebase project "${projectId || 'cloud'}" (${Object.keys(registeredUsersMap).length} users).`
+    );
   }, (err) => {
     console.error("Firestore users listener error:", err);
-    updateDbIndicator('offline', 'DB Blocked / Rules', `Firestore Error: ${err.message}. Check Rules.`);
+    updateDbIndicator(
+      'offline',
+      'DB Blocked / Rules',
+      `Firestore Error: ${err.message}. Check Firebase Console -> Firestore -> Rules and allow read, write: if true;`
+    );
   });
 
   onSnapshot(colRooms(), (snap) => {
@@ -555,7 +576,7 @@ function enterAuthenticatedState() {
 }
 
 // ============================================================================
-// 5. ROOM CREATION, JOINING, & NEW TOKEN PICKER MODAL
+// 5. ROOM CREATION, JOINING, & TOKEN PICKER MODAL
 // ============================================================================
 let activeTokenPickerCallback = null;
 
@@ -1086,7 +1107,7 @@ function syncActiveRoomUI(room) {
 }
 
 // ============================================================================
-// 6. CLASSIC 11x11 MONOPOLY BOARD RENDERER & CLASSIC TITLE DEED CARD
+// 6. CLASSIC MONOPOLY BOARD RENDERER
 // ============================================================================
 function getGridPositionForTile(tileId) {
   if (tileId >= 0 && tileId <= 10) return { row: 11, col: 11 - tileId };
@@ -1733,18 +1754,24 @@ async function executeBuyProperty(room) {
   await saveRoomState(room);
 }
 
+// ----------------------------------------------------------------------------
+// NEW AUCTION LOGIC: Starts a 30-Second live timer
+// ----------------------------------------------------------------------------
 async function executeStartAuction(room) {
   const player = room.players[room.turnIndex];
   const tile = BOARD_TILES[player.position];
+  
   room.activeAuction = {
     tileId: tile.id,
     highBid: 10,
-    highBidder: player.username
+    highBidder: player.username,
+    endTime: Date.now() + 60000 // 60 seconds from now
   };
+  
   playSfx('trade');
   room.logs.unshift({
     time: Date.now(),
-    text: `${tile.name} is up for auction!`
+    text: `${tile.name} is up for auction! Highest bid wins in 30 seconds.`
   });
   await saveRoomState(room);
 }
@@ -2184,7 +2211,7 @@ function renderActivityLog(room) {
 }
 
 // ============================================================================
-// 10. PLAYER-TO-PLAYER TRADING & AUCTION MODALS (FIXED PERMISSIONS)
+// 10. PLAYER-TO-PLAYER TRADING & LIVE AUCTION ENGINE
 // ============================================================================
 function openTradeHubModal(room, defaultPartnerUsername = null) {
   const modal = document.getElementById('modalTradeHub');
@@ -2424,13 +2451,19 @@ function syncTradeAndAuctionModals(room) {
     tradeModal.classList.add('hidden');
   }
 
+  // Live Auction Logic
   const auctionModal = document.getElementById('modalAuction');
+  if (globalAuctionInterval) {
+    clearInterval(globalAuctionInterval);
+    globalAuctionInterval = null;
+  }
+
   if (room.activeAuction) {
     const auc = room.activeAuction;
     const tile = BOARD_TILES[auc.tileId];
     auctionModal.classList.remove('hidden');
 
-    document.getElementById('auctionTileName').textContent = `${tile.name} (Price: $${tile.price})`;
+    document.getElementById('auctionTileName').textContent = `${tile.name} (Value: $${tile.price})`;
     document.getElementById('auctionHighBid').textContent = `$${auc.highBid}`;
     document.getElementById('auctionHighBidder').textContent = `Leader: @${auc.highBidder}`;
 
@@ -2472,38 +2505,67 @@ function syncTradeAndAuctionModals(room) {
         btn.addEventListener('click', async () => {
           room.activeAuction.highBidder = btn.dataset.user;
           room.activeAuction.highBid = parseInt(btn.dataset.bid, 10);
+          
+          // Anti-Snipe: If less than 10 seconds left, push it back to 10 seconds
+          const now = Date.now();
+          if (room.activeAuction.endTime - now < 30000) {
+            room.activeAuction.endTime = now + 30000;
+          }
+
           playSfx('cash');
           await saveRoomState(room);
         });
       });
     }
 
-    const isHost = myAccount && room.hostUsername === myAccount.username;
+    // 30-Second Countdown Logic
     const btnFinalize = document.getElementById('btnFinalizeAuction');
-    
-    if (isHost && btnFinalize) {
-      btnFinalize.style.display = 'block';
-      btnFinalize.onclick = async () => {
-        const winner = room.players.find(p => p.username === auc.highBidder);
-        if (winner && winner.money >= auc.highBid) {
-          winner.money -= auc.highBid;
-          room.properties[auc.tileId] = {
-            owner: winner.username,
-            houses: 0,
-            mortgaged: false
-          };
-          room.logs.unshift({
-            time: Date.now(),
-            text: `@${winner.username} won ${tile.name} at auction for $${auc.highBid}!`
-          });
+    if (btnFinalize) {
+      btnFinalize.disabled = true; // No one can click this manually anymore
+      btnFinalize.classList.add('opacity-75', 'cursor-not-allowed');
+      btnFinalize.classList.remove('hover:bg-emerald-500');
+
+      const isHost = myAccount && room.hostUsername === myAccount.username;
+      const endTime = auc.endTime || (Date.now() + 90000);
+
+      globalAuctionInterval = setInterval(() => {
+        const timeLeft = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+        
+        if (timeLeft > 0) {
+          btnFinalize.textContent = `Closing in ${timeLeft}s...`;
+        } else {
+          btnFinalize.textContent = `Awarding...`;
+          clearInterval(globalAuctionInterval);
+          
+          // Only the Host's browser handles the final DB save to prevent duplicates
+          if (isHost && room.activeAuction) {
+            const winner = room.players.find(p => p.username === auc.highBidder);
+            if (winner && winner.money >= auc.highBid) {
+              winner.money -= auc.highBid;
+              room.properties[auc.tileId] = {
+                owner: winner.username,
+                houses: 0,
+                mortgaged: false
+              };
+              room.logs.unshift({
+                time: Date.now(),
+                text: `🔨 SOLD! @${winner.username} won ${tile.name} for $${auc.highBid}!`
+              });
+            } else {
+              room.logs.unshift({
+                time: Date.now(),
+                text: `🔨 Auction ended, but @${auc.highBidder} couldn't pay.`
+              });
+            }
+            room.activeAuction = null;
+            room.turnPhase = 'POST_ROLL';
+            playSfx('buy');
+            
+            // Standard call to save (no await needed since we are in setInterval)
+            saveRoomState(room); 
+          }
         }
-        room.activeAuction = null;
-        room.turnPhase = 'POST_ROLL';
-        playSfx('buy');
-        await saveRoomState(room);
-      };
-    } else if (btnFinalize) {
-      btnFinalize.style.display = 'none';
+      }, 500);
     }
   } else {
     auctionModal.classList.add('hidden');
