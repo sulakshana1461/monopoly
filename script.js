@@ -203,7 +203,6 @@ let currentRoomId = null;
 let selectedInspectTileId = 39;
 let selectedPortfolioPlayerId = null;
 let authMode = 'register';
-let isRollingAnim = false;
 
 function updateDbIndicator(status, labelText, diagnosticDetail) {
   const dot = document.getElementById('dbStatusDot');
@@ -434,15 +433,18 @@ function setAuthTab(mode) {
   const tabReg = document.getElementById('tabAuthRegister');
   const tabLog = document.getElementById('tabAuthLogin');
   const fieldDisp = document.getElementById('fieldDisplayName');
+  const btnSubmit = document.getElementById('btnAuthSubmit');
 
   if (mode === 'register') {
     tabReg.className = 'py-2 text-xs font-bold rounded-md bg-emerald-600 text-white transition';
     tabLog.className = 'py-2 text-xs font-bold rounded-md text-slate-400 hover:text-white transition';
     fieldDisp.classList.remove('hidden');
+    btnSubmit.innerHTML = '<span>Create Account & Enter</span><i class="fa-solid fa-arrow-right ml-2"></i>';
   } else {
     tabLog.className = 'py-2 text-xs font-bold rounded-md bg-emerald-600 text-white transition';
     tabReg.className = 'py-2 text-xs font-bold rounded-md text-slate-400 hover:text-white transition';
     fieldDisp.classList.add('hidden');
+    btnSubmit.innerHTML = '<span>Sign In to Lobby</span><i class="fa-solid fa-arrow-right ml-2"></i>';
   }
   document.getElementById('authErrorMsg').classList.add('hidden');
 }
@@ -2101,7 +2103,7 @@ function renderDeedInspector(room, tileId) {
               <button id="btnInspectorBuild" ${!canBuild ? 'disabled' : ''} class="px-2.5 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 disabled:opacity-30 text-white font-bold text-xs transition">
                 + House ($${tile.houseCost})
               </button>
-              <button id="btnInspectorSell" ${!canSell ? 'disabled' : ''} class="px-2.5 py-1.5 rounded bg-amber-600 hover:bg-amber-500 disabled:opacity-30 text-white font-bold text-xs transition">
+              <button id="btnInspectorSell" ${!canSell ? 'disabled' : ''} class="px-2.5 py-1.5 rounded bg-amber-600 hover:bg-amber-50 disabled:opacity-30 text-white font-bold text-xs transition">
                 - Sell (+$${Math.floor(tile.houseCost / 2)})
               </button>
             ` : ''}
@@ -2172,7 +2174,6 @@ function openTradeHubModal(room, defaultPartnerUsername = null) {
   if (!myAccount) return;
   const amIPlaying = activePlayers.some(p => p.username === myAccount.username);
 
-  // If you aren't in the game, you can't propose trades
   if (!amIPlaying) {
     showToast("Spectators cannot propose trades.", "rose");
     return;
@@ -2183,12 +2184,12 @@ function openTradeHubModal(room, defaultPartnerUsername = null) {
   const selFrom = document.getElementById('selectTradeFromPlayer');
   const selTo = document.getElementById('selectTradeToPlayer');
 
-  // Player 1 Offers is permanently locked to YOU
+  // FIXED: Lock "Player 1 Offers" exactly to the person currently signed in
   const defaultFrom = myAccount.username;
   const fromChoices = activePlayers.filter(p => p.username === defaultFrom);
   
   selFrom.innerHTML = fromChoices.map(p => `<option value="${p.username}" selected>@${p.username} (You)</option>`).join('');
-  selFrom.disabled = true; // Lock the dropdown
+  selFrom.disabled = true;
 
   // Player 2 Gives is everyone EXCEPT you
   const toChoices = activePlayers.filter(p => p.username !== defaultFrom);
@@ -2357,7 +2358,6 @@ function syncTradeAndAuctionModals(room) {
   if (room.activeTrade) {
     const tr = room.activeTrade;
     
-    // Only show the trade modal if you are the one receiving the trade (or if you are the host controlling a bot)
     const amITarget = myAccount && (
       tr.to === myAccount.username || 
       (room.hostUsername === myAccount.username && room.players.find(p => p.username === tr.to)?.isSimulated)
@@ -2421,7 +2421,6 @@ function syncTradeAndAuctionModals(room) {
       const next10 = auc.highBid + 10;
       const next50 = auc.highBid + 50;
       
-      // Only show your own bid buttons (or bots if you are host)
       const canIBid = myAccount && (
         p.username === myAccount.username || 
         (p.isSimulated && room.hostUsername === myAccount.username)
@@ -2463,7 +2462,6 @@ function syncTradeAndAuctionModals(room) {
     const isHost = myAccount && room.hostUsername === myAccount.username;
     const btnFinalize = document.getElementById('btnFinalizeAuction');
     
-    // Only host can hammer down the auction
     if (isHost) {
       btnFinalize.style.display = 'block';
       btnFinalize.onclick = async () => {
@@ -2497,7 +2495,6 @@ function syncTradeAndAuctionModals(room) {
 // 11. EVENT LISTENERS ON LOAD
 // ============================================================================
 window.addEventListener('DOMContentLoaded', async () => {
-  renderAuthTokenPicker();
 
   document.getElementById('btnDbStatus').addEventListener('click', () => {
     showToast(dbDiagnosticMessage, isCloudConnected ? 'emerald' : 'rose');
