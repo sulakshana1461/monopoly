@@ -162,6 +162,7 @@ function playSfx(type) {
 
 function showToast(msg, variant = 'emerald') {
   const container = document.getElementById('toastContainer');
+  if (!container) return;
   const colors = {
     emerald: 'bg-emerald-900 border-emerald-500 text-emerald-100',
     cyan:    'bg-sky-900 border-sky-500 text-sky-100',
@@ -179,13 +180,14 @@ function showToast(msg, variant = 'emerald') {
 }
 
 // ============================================================================
-// 3. DATABASE CONNECTION & TOP-RIGHT STATUS INDICATOR
+// 3. DATABASE CONNECTION & NON-BLOCKING CLOUD SYNC
 // ============================================================================
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'copypoly-vibe-app';
 let db = null;
 let auth = null;
 let currentUser = null;
 let isCloudConnected = false;
+let hasReceivedFirstSnapshot = false;
 let dbDiagnosticMessage = "Checking database connection...";
 
 let myAccount = null;
@@ -215,8 +217,24 @@ function updateDbIndicator(status, labelText, diagnosticDetail) {
     txt.className = 'text-amber-300';
   } else {
     dot.className = 'w-2.5 h-2.5 rounded-full bg-red-500';
-    txt.textContent = labelText || 'Local Mode (Offline)';
+    txt.textContent = labelText || 'Local Mode';
     txt.className = 'text-red-300';
+  }
+}
+
+// Non-blocking Firestore write helper so UI never hangs
+async function safeCloudWrite(writePromise, contextLabel) {
+  if (!isCloudConnected || !db) return;
+  try {
+    await writePromise;
+  } catch (err) {
+    console.error(`Firestore write error (${contextLabel}):`, err);
+    updateDbIndicator(
+      'offline',
+      'DB Rules Error',
+      `Firestore blocked saving (${err.code || err.message}). Go to Firebase Console -> Firestore -> Rules and set "allow read, write: if true;"`
+    );
+    showToast(`Cloud sync warning: ${err.code || err.message}`, 'amber');
   }
 }
 
@@ -239,36 +257,38 @@ async function initDatabaseAndAuth() {
       updateDbIndicator(
         'offline',
         'Local Mode (No Keys)',
-        'You are running in Local Mode because MY_FIREBASE_CONFIG in script.js still has "YOUR_API_KEY". Paste your real Firebase keys at the top of script.js!'
+        'Running in Local Mode. Paste your real Firebase config keys into MY_FIREBASE_CONFIG at the top of script.js.'
       );
       return;
     }
 
     const app = initializeApp(firebaseConfig);
     db = getFirestore(app);
+    currentUser = { uid: 'user-' + Math.random().toString(36).slice(2, 9) };
+    isCloudConnected = true;
 
-    // Try anonymous auth if enabled, but do NOT fail if user hasn't turned on Anonymous Auth in Firebase Console
+    // Start listeners immediately
+    setupRealtimeListeners(firebaseConfig.projectId);
+
+    // Optional background anonymous auth (non-blocking)
     try {
       auth = getAuth(app);
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
+      signInAnonymously(auth).then((cred) => {
+        if (cred && cred.user) currentUser = cred.user;
+      }).catch(() => {});
+    } catch (e) {}
+
+    // 5-second timeout check if Firestore hasn't responded yet
+    setTimeout(() => {
+      if (!hasReceivedFirstSnapshot && isCloudConnected) {
+        updateDbIndicator(
+          'offline',
+          'Check Firestore Setup',
+          'Firebase initialized, but Firestore has not responded yet. Make sure you clicked "Create Database" inside Firestore and enabled Test Mode!'
+        );
       }
-      currentUser = auth.currentUser;
-      onAuthStateChanged(auth, (u) => { if (u) currentUser = u; });
-    } catch (authErr) {
-      console.warn("Firebase Auth skipped (using Firestore Test Mode directly):", authErr.message);
-      currentUser = { uid: 'user-' + Math.random().toString(36).slice(2, 9) };
-    }
+    }, 5000);
 
-    if (!currentUser) {
-      currentUser = { uid: 'user-' + Math.random().toString(36).slice(2, 9) };
-    }
-
-    isCloudConnected = true;
-    setupRealtimeListeners(firebaseConfig.projectId);
-    await restoreExistingSession();
   } catch (err) {
     console.error("Database connection error:", err);
     currentUser = { uid: 'local-' + Math.random().toString(36).slice(2, 9) };
@@ -280,29 +300,28 @@ async function initDatabaseAndAuth() {
 function setupRealtimeListeners(projectId) {
   if (!isCloudConnected || !db) return;
 
-  // 1. Listen to users collection & confirm live connection
   onSnapshot(colUsers(), (snap) => {
+    hasReceivedFirstSnapshot = true;
     const nextMap = {};
     snap.forEach((d) => { nextMap[d.id] = d.data(); });
-    registeredUsersMap = nextMap;
+    registeredUsersMap = { ...registeredUsersMap, ...nextMap };
     renderRegisteredUsersDirectory();
     updateDbIndicator(
       'connected',
       'DB Connected',
-      `Connected to Firebase Firestore project "${projectId || 'cloud'}" (${ Object.keys(nextMap).length } registered users).`
+      `Connected to Firebase project "${projectId || 'cloud'}" (${Object.keys(registeredUsersMap).length} users).`
     );
   }, (err) => {
     console.error("Firestore users listener error:", err);
-    isCloudConnected = false;
     updateDbIndicator(
       'offline',
       'DB Blocked / Rules',
-      `Firestore Error: ${err.message}. Make sure your Firestore Database is created and Rules are set to Test Mode!`
+      `Firestore Error: ${err.message}. Check Firebase Console -> Firestore -> Rules and allow read, write: if true;`
     );
   });
 
-  // 2. Listen to rooms
   onSnapshot(colRooms(), (snap) => {
+    hasReceivedFirstSnapshot = true;
     const nextRooms = {};
     snap.forEach((d) => {
       const data = d.data();
@@ -310,18 +329,17 @@ function setupRealtimeListeners(projectId) {
         nextRooms[d.id] = normalizeRoomData(data);
       }
     });
-    allRoomsMap = nextRooms;
+    allRoomsMap = { ...allRoomsMap, ...nextRooms };
     renderLobbyViews();
     if (currentRoomId && allRoomsMap[currentRoomId]) {
       syncActiveRoomUI(allRoomsMap[currentRoomId]);
     }
   }, (err) => console.error("Rooms listener error:", err));
 
-  // 3. Listen to invites
   onSnapshot(colInvites(), (snap) => {
     const nextInvites = {};
     snap.forEach((d) => { nextInvites[d.id] = d.data(); });
-    allInvitesMap = nextInvites;
+    allInvitesMap = { ...allInvitesMap, ...nextInvites };
     renderIncomingInvites();
   }, (err) => console.error("Invites listener error:", err));
 }
@@ -356,6 +374,12 @@ async function saveRoomState(room) {
   const normalized = normalizeRoomData(room);
   allRoomsMap[normalized.id] = normalized;
 
+  // Update UI immediately without waiting for network
+  renderLobbyViews();
+  if (currentRoomId === normalized.id) {
+    syncActiveRoomUI(normalized);
+  }
+
   if (isCloudConnected && db) {
     const payload = {
       id: normalized.id,
@@ -379,34 +403,19 @@ async function saveRoomState(room) {
       activeAuctionJson: JSON.stringify(normalized.activeAuction || null),
       pendingDebtJson: JSON.stringify(normalized.pendingDebt || null)
     };
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_rooms', normalized.id), payload);
-  } else {
-    renderLobbyViews();
-    if (currentRoomId === normalized.id) {
-      syncActiveRoomUI(normalized);
-    }
+    safeCloudWrite(
+      setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_rooms', normalized.id), payload),
+      'saveRoomState'
+    );
   }
 }
 
-async function restoreExistingSession() {
-  if (!isCloudConnected || !db || !currentUser) return;
-  try {
-    const profSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_profiles', currentUser.uid));
-    if (profSnap.exists()) {
-      const prof = profSnap.data();
-      if (prof && prof.username) {
-        myAccount = prof;
-        enterAuthenticatedState();
-      }
-    }
-  } catch (e) {}
-}
-
 // ============================================================================
-// 4. AUTHENTICATION & @USERNAME REGISTRATION LOGIC
+// 4. AUTHENTICATION & @USERNAME REGISTRATION LOGIC (FIXED TRANSITION)
 // ============================================================================
 function renderAuthTokenPicker() {
   const grid = document.getElementById('authTokenGrid');
+  if (!grid) return;
   grid.innerHTML = PLAYER_TOKENS.map((t) => {
     const active = t.id === selectedAuthToken;
     return `
@@ -461,7 +470,7 @@ async function handleAuthSubmit(e) {
   const errBox = document.getElementById('authErrorMsg');
 
   if (rawUsername.length < 3) {
-    errBox.textContent = 'Username must be at least 3 characters.';
+    errBox.textContent = 'Username must be at least 3 characters (letters, numbers, or underscore).';
     errBox.classList.remove('hidden');
     return;
   }
@@ -480,27 +489,38 @@ async function handleAuthSubmit(e) {
       errBox.classList.remove('hidden');
       return;
     }
+    const uid = currentUser?.uid || ('u-' + Date.now());
     const userRecord = {
-      uid: currentUser?.uid || ('u-' + Date.now()),
+      uid: uid,
       username: rawUsername,
       displayName: displayName,
       token: selectedAuthToken,
       pin: pin,
       createdAt: Date.now()
     };
+
     registeredUsersMap[rawUsername] = userRecord;
     myAccount = userRecord;
 
-    if (isCloudConnected && db) {
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_users', rawUsername), userRecord);
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_profiles', userRecord.uid), userRecord);
-    }
+    // 1. Transition to Lobby IMMEDIATELY so UI never freezes
     playSfx('buy');
     showToast(`Signed in as @${rawUsername}`, 'emerald');
     enterAuthenticatedState();
+
+    // 2. Save to Firebase in the background
+    if (isCloudConnected && db) {
+      safeCloudWrite(
+        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_users', rawUsername), userRecord),
+        'registerUser'
+      );
+      safeCloudWrite(
+        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_profiles', uid), userRecord),
+        'registerProfile'
+      );
+    }
   } else {
     if (!existing) {
-      errBox.textContent = `Account @${rawUsername} not found.`;
+      errBox.textContent = `Account @${rawUsername} not found. Click "Create Account" first.`;
       errBox.classList.remove('hidden');
       return;
     }
@@ -510,12 +530,34 @@ async function handleAuthSubmit(e) {
       return;
     }
     myAccount = existing;
-    if (isCloudConnected && db && currentUser) {
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_profiles', currentUser.uid), existing);
-    }
     playSfx('buy');
     showToast(`Welcome back, @${rawUsername}!`, 'cyan');
     enterAuthenticatedState();
+  }
+}
+
+function showViewSection(viewName) {
+  const vAuth = document.getElementById('viewAuth');
+  const vLobby = document.getElementById('viewLobby');
+  const vGame = document.getElementById('viewGame');
+
+  // Hide all first
+  vAuth.classList.add('hidden');
+  vAuth.classList.remove('flex');
+  vLobby.classList.add('hidden');
+  vLobby.classList.remove('grid');
+  vGame.classList.add('hidden');
+  vGame.classList.remove('grid');
+
+  if (viewName === 'auth') {
+    vAuth.classList.remove('hidden');
+    vAuth.classList.add('flex');
+  } else if (viewName === 'lobby') {
+    vLobby.classList.remove('hidden');
+    vLobby.classList.add('grid');
+  } else if (viewName === 'game') {
+    vGame.classList.remove('hidden');
+    vGame.classList.add('grid');
   }
 }
 
@@ -533,12 +575,10 @@ function enterAuthenticatedState() {
   document.getElementById('navUserDisplay').textContent = myAccount.displayName;
   document.getElementById('navUsername').textContent = '@' + myAccount.username;
 
-  document.getElementById('viewAuth').classList.add('hidden');
   if (currentRoomId && allRoomsMap[currentRoomId]) {
     syncActiveRoomUI(allRoomsMap[currentRoomId]);
   } else {
-    document.getElementById('viewGame').classList.add('hidden');
-    document.getElementById('viewLobby').classList.remove('hidden');
+    showViewSection('lobby');
     renderLobbyViews();
     renderIncomingInvites();
     renderRegisteredUsersDirectory();
@@ -603,10 +643,9 @@ async function handleCreateRoom(e) {
   };
 
   currentRoomId = roomId;
-  await saveRoomState(newRoom);
   playSfx('buy');
   showToast(`Room "${title}" created!`, 'emerald');
-  syncActiveRoomUI(newRoom);
+  await saveRoomState(newRoom);
 }
 
 async function sendUsernameInvite(targetUsernameRaw) {
@@ -637,15 +676,18 @@ async function sendUsernameInvite(targetUsernameRaw) {
   };
 
   allInvitesMap[inviteId] = inviteObj;
-  if (isCloudConnected && db) {
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_invites', inviteId), inviteObj);
-  }
-
   feedback.textContent = `Invite sent to @${cleanUser}!`;
   feedback.className = 'text-xs mt-2 text-emerald-400 font-semibold';
   feedback.classList.remove('hidden');
   playSfx('cash');
   showToast(`Invite sent to @${cleanUser}`, 'emerald');
+
+  if (isCloudConnected && db) {
+    safeCloudWrite(
+      setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_invites', inviteId), inviteObj),
+      'sendInvite'
+    );
+  }
 }
 
 async function addHotseatSimulatedPlayer() {
@@ -680,8 +722,8 @@ async function addHotseatSimulatedPlayer() {
     text: `Seat #${seatIdx + 1} joined: @${newSeat.username}.`
   });
 
-  await saveRoomState(room);
   playSfx('buy');
+  await saveRoomState(room);
 }
 
 async function joinRoomById(roomId) {
@@ -701,20 +743,23 @@ async function joinRoomById(roomId) {
       time: Date.now(),
       text: `@${myAccount.username} joined the room (${room.players.length}/8).`
     });
-    await saveRoomState(room);
   }
 
   const invId = `inv_${roomId}_${myAccount.username}`;
   if (allInvitesMap[invId]) {
     delete allInvitesMap[invId];
+    renderIncomingInvites();
     if (isCloudConnected && db) {
-      try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_invites', invId)); } catch (e) {}
+      safeCloudWrite(
+        deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_invites', invId)),
+        'deleteInvite'
+      );
     }
   }
 
   currentRoomId = roomId;
   playSfx('buy');
-  syncActiveRoomUI(room);
+  await saveRoomState(room);
 }
 
 async function startRoomBoardGame() {
@@ -734,12 +779,13 @@ async function startRoomBoardGame() {
     text: `Game started with ${room.players.length} players! @${room.players[0].username} rolls first.`
   });
 
-  await saveRoomState(room);
   playSfx('trade');
+  await saveRoomState(room);
 }
 
 function renderRegisteredUsersDirectory() {
   const container = document.getElementById('listRegisteredUsers');
+  if (!container) return;
   const users = Object.values(registeredUsersMap);
   document.getElementById('badgeUserCount').textContent = `${users.length} users`;
 
@@ -780,7 +826,7 @@ function renderRegisteredUsersDirectory() {
 
 function renderIncomingInvites() {
   const container = document.getElementById('listIncomingInvites');
-  if (!myAccount) return;
+  if (!container || !myAccount) return;
 
   const myInvites = Object.values(allInvitesMap).filter(
     inv => inv.toUsername === myAccount.username && allRoomsMap[inv.roomId]
@@ -815,6 +861,7 @@ function renderIncomingInvites() {
 
 function renderLobbyViews() {
   const listEl = document.getElementById('listPublicRooms');
+  if (!listEl) return;
   const rooms = Object.values(allRoomsMap).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
   if (rooms.length === 0) {
@@ -890,7 +937,7 @@ function renderLobbyViews() {
       }
     }
     document.getElementById('gridStagingPlayers').innerHTML = slotsHtml.join('');
-  } else {
+  } else if (stagingPanel) {
     stagingPanel.classList.add('hidden');
   }
 }
@@ -903,12 +950,10 @@ function syncActiveRoomUI(room) {
   document.getElementById('navRoomCode').textContent = `#${room.code}`;
 
   if (room.status === 'waiting') {
-    document.getElementById('viewGame').classList.add('hidden');
-    document.getElementById('viewLobby').classList.remove('hidden');
+    showViewSection('lobby');
     renderLobbyViews();
   } else {
-    document.getElementById('viewLobby').classList.add('hidden');
-    document.getElementById('viewGame').classList.remove('hidden');
+    showViewSection('game');
     renderFullBoardGame(room);
   }
 }
@@ -1102,7 +1147,6 @@ function buildCenterCommandHubHtml(room) {
 
   return `
     <div class="board-center">
-      <!-- Top Row: Classic Card Decks & Classic Red COPYPOLY Logo -->
       <div class="flex items-center justify-between gap-3">
         <div class="flex-1 bg-amber-50 border-2 border-slate-800 rounded-lg p-2 flex items-center gap-2 shadow-sm">
           <div class="w-8 h-10 rounded bg-amber-400 border border-slate-900 flex items-center justify-center font-bold text-base">❓</div>
@@ -1125,7 +1169,6 @@ function buildCenterCommandHubHtml(room) {
         </div>
       </div>
 
-      <!-- Center Stage: Active Turn Card & Classic White Dice -->
       <div class="flex-1 flex flex-col items-center justify-center my-3 px-4 py-3 rounded-xl bg-white/85 border-2 border-slate-800 shadow-sm">
         <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-400 mb-2">
           <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs border border-black" style="background:${activePlayer.color}">${activePlayer.emoji}</span>
@@ -1158,7 +1201,6 @@ function buildCenterCommandHubHtml(room) {
         ` : ''}
       </div>
 
-      <!-- Bottom Quick Bar -->
       <div class="flex items-center justify-between gap-2 bg-white/90 border-2 border-slate-800 rounded-lg px-3 py-2">
         <div class="text-xs text-slate-700 truncate">
           Click any property on the board to view its Title Deed or build houses.
@@ -1944,7 +1986,6 @@ function renderDeedInspector(room, tileId) {
     `;
   }
 
-  // Classic White Paper Title Deed Card
   card.innerHTML = `
     <div class="bg-white text-slate-900 border-2 border-slate-900 rounded-lg p-3 shadow">
       <div class="rounded border-2 border-slate-900 p-2.5 text-center" style="background-color: ${grp ? grp.hex : '#334155'}; color: ${grp ? grp.text : '#ffffff'}">
@@ -2270,7 +2311,6 @@ function syncTradeAndAuctionModals(room) {
 window.addEventListener('DOMContentLoaded', async () => {
   renderAuthTokenPicker();
 
-  // Top-Right DB Status Button diagnostic click
   document.getElementById('btnDbStatus').addEventListener('click', () => {
     showToast(dbDiagnosticMessage, isCloudConnected ? 'emerald' : 'rose');
   });
@@ -2286,16 +2326,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.getElementById('btnSwitchAccount').addEventListener('click', () => {
-    document.getElementById('viewLobby').classList.add('hidden');
-    document.getElementById('viewGame').classList.add('hidden');
-    document.getElementById('viewAuth').classList.remove('hidden');
+    showViewSection('auth');
   });
 
   document.getElementById('btnLeaveRoom').addEventListener('click', () => {
     currentRoomId = null;
     document.getElementById('navRoomBadge').classList.add('hidden');
-    document.getElementById('viewGame').classList.add('hidden');
-    document.getElementById('viewLobby').classList.remove('hidden');
+    showViewSection('lobby');
     renderLobbyViews();
   });
 
