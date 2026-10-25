@@ -203,6 +203,7 @@ let currentRoomId = null;
 let selectedInspectTileId = 39;
 let selectedPortfolioPlayerId = null;
 let authMode = 'register';
+let isRollingAnim = false;
 
 function updateDbIndicator(status, labelText, diagnosticDetail) {
   const dot = document.getElementById('dbStatusDot');
@@ -231,11 +232,7 @@ async function safeCloudWrite(writePromise, contextLabel) {
     await writePromise;
   } catch (err) {
     console.error(`Firestore write error (${contextLabel}):`, err);
-    updateDbIndicator(
-      'offline',
-      'DB Rules Error',
-      `Firestore blocked saving (${err.code || err.message}). Go to Firebase Console -> Firestore -> Rules and set "allow read, write: if true;"`
-    );
+    updateDbIndicator('offline', 'DB Rules Error', `Firestore blocked saving (${err.code || err.message}).`);
     showToast(`Cloud sync warning: ${err.code || err.message}`, 'amber');
   }
 }
@@ -256,11 +253,7 @@ async function initDatabaseAndAuth() {
     if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
       currentUser = { uid: 'local-' + Math.random().toString(36).slice(2, 9) };
       isCloudConnected = false;
-      updateDbIndicator(
-        'offline',
-        'Local Mode (No Keys)',
-        'Running in Local Mode. Paste your real Firebase config keys into MY_FIREBASE_CONFIG at the top of script.js.'
-      );
+      updateDbIndicator('offline', 'Local Mode (No Keys)', 'Paste your real Firebase config keys into MY_FIREBASE_CONFIG.');
       return;
     }
 
@@ -280,11 +273,7 @@ async function initDatabaseAndAuth() {
 
     setTimeout(() => {
       if (!hasReceivedFirstSnapshot && isCloudConnected) {
-        updateDbIndicator(
-          'offline',
-          'Check Firestore Setup',
-          'Firebase initialized, but Firestore has not responded yet. Make sure you clicked "Create Database" inside Firestore and enabled Test Mode!'
-        );
+        updateDbIndicator('offline', 'Check Firestore Setup', 'Firebase initialized, but Firestore has not responded yet. Enable Test Mode!');
       }
     }, 5000);
 
@@ -305,18 +294,10 @@ function setupRealtimeListeners(projectId) {
     snap.forEach((d) => { nextMap[d.id] = d.data(); });
     registeredUsersMap = nextMap;
     renderRegisteredUsersDirectory();
-    updateDbIndicator(
-      'connected',
-      'DB Connected',
-      `Connected to Firebase project "${projectId || 'cloud'}" (${Object.keys(registeredUsersMap).length} users).`
-    );
+    updateDbIndicator('connected', 'DB Connected', `Connected to Firebase project "${projectId || 'cloud'}"`);
   }, (err) => {
     console.error("Firestore users listener error:", err);
-    updateDbIndicator(
-      'offline',
-      'DB Blocked / Rules',
-      `Firestore Error: ${err.message}. Check Firebase Console -> Firestore -> Rules and allow read, write: if true;`
-    );
+    updateDbIndicator('offline', 'DB Blocked / Rules', `Firestore Error: ${err.message}. Check Rules.`);
   });
 
   onSnapshot(colRooms(), (snap) => {
@@ -332,7 +313,8 @@ function setupRealtimeListeners(projectId) {
 
     if (currentRoomId && !allRoomsMap[currentRoomId]) {
       currentRoomId = null;
-      document.getElementById('navRoomBadge').classList.add('hidden');
+      const badge = document.getElementById('navRoomBadge');
+      if (badge) badge.classList.add('hidden');
       if (myAccount) {
         showViewSection('lobby');
         showToast('The room was deleted by the host.', 'amber');
@@ -426,7 +408,7 @@ async function saveRoomState(room) {
 }
 
 // ============================================================================
-// 4. AUTHENTICATION & @USERNAME REGISTRATION LOGIC
+// 4. AUTHENTICATION LOGIC
 // ============================================================================
 function setAuthTab(mode) {
   authMode = mode;
@@ -434,6 +416,7 @@ function setAuthTab(mode) {
   const tabLog = document.getElementById('tabAuthLogin');
   const fieldDisp = document.getElementById('fieldDisplayName');
   const btnSubmit = document.getElementById('btnAuthSubmit');
+  if (!tabReg) return;
 
   if (mode === 'register') {
     tabReg.className = 'py-2 text-xs font-bold rounded-md bg-emerald-600 text-white transition';
@@ -497,10 +480,6 @@ async function handleAuthSubmit(e) {
         setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_users', rawUsername), userRecord),
         'registerUser'
       );
-      safeCloudWrite(
-        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_profiles', uid), userRecord),
-        'registerProfile'
-      );
     }
   } else {
     if (!existing) {
@@ -524,6 +503,7 @@ function showViewSection(viewName) {
   const vAuth = document.getElementById('viewAuth');
   const vLobby = document.getElementById('viewLobby');
   const vGame = document.getElementById('viewGame');
+  if (!vAuth || !vLobby || !vGame) return;
 
   vAuth.classList.add('hidden');
   vAuth.classList.remove('flex');
@@ -546,16 +526,23 @@ function showViewSection(viewName) {
 
 function enterAuthenticatedState() {
   const navUserBox = document.getElementById('navUserBox');
-  navUserBox.classList.remove('hidden');
-  navUserBox.classList.add('flex');
+  if (navUserBox) {
+    navUserBox.classList.remove('hidden');
+    navUserBox.classList.add('flex');
+  }
 
   const avatarEl = document.getElementById('navUserAvatar');
-  avatarEl.style.backgroundColor = '#10b98133';
-  avatarEl.style.borderColor = '#10b981';
-  avatarEl.textContent = (myAccount.displayName || myAccount.username).charAt(0).toUpperCase();
+  if (avatarEl) {
+    avatarEl.style.backgroundColor = '#10b98133';
+    avatarEl.style.borderColor = '#10b981';
+    avatarEl.textContent = (myAccount.displayName || myAccount.username).charAt(0).toUpperCase();
+  }
 
-  document.getElementById('navUserDisplay').textContent = myAccount.displayName || myAccount.username;
-  document.getElementById('navUsername').textContent = '@' + myAccount.username;
+  const nameDisp = document.getElementById('navUserDisplay');
+  if (nameDisp) nameDisp.textContent = myAccount.displayName || myAccount.username;
+  
+  const userDisp = document.getElementById('navUsername');
+  if (userDisp) userDisp.textContent = '@' + myAccount.username;
 
   if (currentRoomId && allRoomsMap[currentRoomId]) {
     syncActiveRoomUI(allRoomsMap[currentRoomId]);
@@ -576,6 +563,7 @@ function openTokenPickerModal(takenTokenIds, callback) {
   activeTokenPickerCallback = callback;
   const grid = document.getElementById('gridRoomTokenPicker');
   const modal = document.getElementById('modalTokenPicker');
+  if (!grid || !modal) return;
   
   grid.innerHTML = PLAYER_TOKENS.map(t => {
     const isTaken = takenTokenIds.includes(t.id);
@@ -605,10 +593,13 @@ function openTokenPickerModal(takenTokenIds, callback) {
   modal.classList.remove('hidden');
 }
 
-document.getElementById('btnCancelTokenPicker').addEventListener('click', () => {
-  document.getElementById('modalTokenPicker').classList.add('hidden');
-  activeTokenPickerCallback = null;
-});
+const btnCancelToken = document.getElementById('btnCancelTokenPicker');
+if (btnCancelToken) {
+  btnCancelToken.addEventListener('click', () => {
+    document.getElementById('modalTokenPicker').classList.add('hidden');
+    activeTokenPickerCallback = null;
+  });
+}
 
 function createPlayerSeatObject(acc, startingCash, isSimulated = false, selectedTokenId = null) {
   const tok = PLAYER_TOKENS.find(t => t.id === selectedTokenId) || PLAYER_TOKENS[0];
@@ -687,7 +678,8 @@ async function deleteRoomById(roomId) {
   delete allRoomsMap[roomId];
   if (currentRoomId === roomId) {
     currentRoomId = null;
-    document.getElementById('navRoomBadge').classList.add('hidden');
+    const badge = document.getElementById('navRoomBadge');
+    if (badge) badge.classList.add('hidden');
     showViewSection('lobby');
   }
 
@@ -739,9 +731,11 @@ async function sendUsernameInvite(targetUsernameRaw) {
   };
 
   allInvitesMap[inviteId] = inviteObj;
-  feedback.textContent = `Invite sent to @${cleanUser}!`;
-  feedback.className = 'text-xs mt-2 text-emerald-400 font-semibold';
-  feedback.classList.remove('hidden');
+  if (feedback) {
+    feedback.textContent = `Invite sent to @${cleanUser}!`;
+    feedback.className = 'text-xs mt-2 text-emerald-400 font-semibold';
+    feedback.classList.remove('hidden');
+  }
   playSfx('cash');
   showToast(`Invite sent to @${cleanUser}`, 'emerald');
 
@@ -756,6 +750,8 @@ async function sendUsernameInvite(targetUsernameRaw) {
 async function addHotseatSimulatedPlayer() {
   if (!currentRoomId || !allRoomsMap[currentRoomId]) return;
   const room = allRoomsMap[currentRoomId];
+  if (!room.players) room.players = [];
+  
   if (room.players.length >= 8) {
     showToast('Maximum of 8 players reached!', 'rose');
     return;
@@ -783,6 +779,8 @@ async function addHotseatSimulatedPlayer() {
   const seatIdx = room.players.length;
   const newSeat = createPlayerSeatObject(pick, room.startingCash || 1500, true, availableToken ? availableToken.id : null);
   room.players.push(newSeat);
+  
+  if (!room.logs) room.logs = [];
   room.logs.unshift({
     time: Date.now(),
     text: `Seat #${seatIdx + 1} joined: @${newSeat.username}.`
@@ -796,21 +794,11 @@ async function joinRoomById(roomId) {
   if (!myAccount) return;
 
   let room = allRoomsMap[roomId];
-
-  if (isCloudConnected && db) {
-    try {
-      const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_rooms', roomId));
-      if (snap.exists()) {
-        room = normalizeRoomData(snap.data());
-        allRoomsMap[roomId] = room;
-      }
-    } catch (e) {}
-  }
-
   if (!room) {
     showToast('This room no longer exists.', 'rose');
     return;
   }
+  if (!room.players) room.players = [];
 
   const alreadyIn = room.players.some(p => p.username === myAccount.username);
   if (alreadyIn) {
@@ -829,6 +817,8 @@ async function joinRoomById(roomId) {
   openTokenPickerModal(takenTokens, async (selectedTokenId) => {
     const newSeat = createPlayerSeatObject(myAccount, room.startingCash || 1500, false, selectedTokenId);
     room.players.push(newSeat);
+    
+    if (!room.logs) room.logs = [];
     room.logs.unshift({
       time: Date.now(),
       text: `@${myAccount.username} joined the room (${room.players.length}/8).`
@@ -857,7 +847,8 @@ async function joinRoomById(roomId) {
 async function startRoomBoardGame() {
   if (!currentRoomId || !allRoomsMap[currentRoomId]) return;
   const room = allRoomsMap[currentRoomId];
-  if (room.players.length < 2) {
+  
+  if (!room.players || room.players.length < 2) {
     showToast('Add at least 2 players to start the game.', 'amber');
     return;
   }
@@ -866,6 +857,8 @@ async function startRoomBoardGame() {
   room.turnIndex = 0;
   room.turnNumber = 1;
   room.turnPhase = 'PRE_ROLL';
+  
+  if (!room.logs) room.logs = [];
   room.logs.unshift({
     time: Date.now(),
     text: `Game started with ${room.players.length} players! @${room.players[0].username} rolls first.`
@@ -879,7 +872,9 @@ function renderRegisteredUsersDirectory() {
   const container = document.getElementById('listRegisteredUsers');
   if (!container) return;
   const users = Object.values(registeredUsersMap);
-  document.getElementById('badgeUserCount').textContent = `${users.length} users`;
+  
+  const countBadge = document.getElementById('badgeUserCount');
+  if (countBadge) countBadge.textContent = `${users.length} users`;
 
   if (users.length === 0) {
     container.innerHTML = `<span class="text-xs text-slate-400">No players registered yet.</span>`;
@@ -923,7 +918,9 @@ function renderIncomingInvites() {
   const myInvites = Object.values(allInvitesMap).filter(
     inv => inv.toUsername === myAccount.username && allRoomsMap[inv.roomId]
   );
-  document.getElementById('badgeInviteCount').textContent = String(myInvites.length);
+  
+  const invBadge = document.getElementById('badgeInviteCount');
+  if (invBadge) invBadge.textContent = String(myInvites.length);
 
   if (myInvites.length === 0) {
     container.innerHTML = `
@@ -965,7 +962,7 @@ function renderLobbyViews() {
     `;
   } else {
     listEl.innerHTML = rooms.map(r => {
-      const isMember = myAccount && r.players.some(p => p.username === myAccount.username);
+      const isMember = myAccount && (r.players || []).some(p => p.username === myAccount.username);
       const isHost = myAccount && r.hostUsername === myAccount.username;
       const statusBadge = r.status === 'waiting'
         ? `<span class="text-[10px] px-2 py-0.5 rounded bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 font-semibold">Waiting</span>`
@@ -980,10 +977,10 @@ function renderLobbyViews() {
               <span class="text-xs text-slate-400">#${r.code}</span>
             </div>
             <div class="text-xs text-slate-400 mt-1">
-              Host: <strong class="text-slate-200">@${r.hostUsername}</strong> • Players: <strong class="text-white">${r.players.length}/8</strong>
+              Host: <strong class="text-slate-200">@${r.hostUsername}</strong> • Players: <strong class="text-white">${(r.players || []).length}/8</strong>
             </div>
             <div class="flex flex-wrap gap-1 mt-1.5">
-              ${r.players.map(p => `<span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">${p.emoji} @${p.username}</span>`).join('')}
+              ${(r.players || []).map(p => `<span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">${p.emoji || ''} @${p.username}</span>`).join('')}
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -1014,14 +1011,20 @@ function renderLobbyViews() {
     const room = allRoomsMap[currentRoomId];
     const isHost = myAccount && room.hostUsername === myAccount.username;
     stagingPanel.classList.remove('hidden');
-    document.getElementById('stagingRoomTitle').textContent = room.title;
-    document.getElementById('stagingRoomCode').textContent = `ROOM CODE: ${room.code}`;
+    
+    const titleEl = document.getElementById('stagingRoomTitle');
+    if (titleEl) titleEl.textContent = room.title;
+    
+    const codeEl = document.getElementById('stagingRoomCode');
+    if (codeEl) codeEl.textContent = `ROOM CODE: ${room.code}`;
 
     const seatCounterEl = document.getElementById('stagingSeatCounter');
-    seatCounterEl.innerHTML = `
-      <span>${room.players.length} / 8 Players</span>
-      ${isHost ? `<button id="btnDeleteStagingRoom" type="button" class="ml-3 px-2.5 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition"><i class="fa-solid fa-trash mr-1"></i>Delete Room</button>` : ''}
-    `;
+    if (seatCounterEl) {
+      seatCounterEl.innerHTML = `
+        <span>${(room.players || []).length} / 8 Players</span>
+        ${isHost ? `<button id="btnDeleteStagingRoom" type="button" class="ml-3 px-2.5 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition"><i class="fa-solid fa-trash mr-1"></i>Delete Room</button>` : ''}
+      `;
+    }
     const btnDelStage = document.getElementById('btnDeleteStagingRoom');
     if (btnDelStage) {
       btnDelStage.onclick = () => deleteRoomById(room.id);
@@ -1029,16 +1032,16 @@ function renderLobbyViews() {
 
     const slotsHtml = [];
     for (let i = 0; i < 8; i++) {
-      const p = room.players[i];
+      const p = (room.players || [])[i];
       if (p) {
         slotsHtml.push(`
           <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-between">
             <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 rounded-full flex items-center justify-center text-base" style="background:${p.color}30; border:2px solid ${p.color}">
-                ${p.emoji}
+              <div class="w-8 h-8 rounded-full flex items-center justify-center text-base" style="background:${p.color || '#fff'}30; border:2px solid ${p.color || '#fff'}">
+                ${p.emoji || ''}
               </div>
               <div>
-                <div class="text-xs font-bold text-white">${p.displayName}</div>
+                <div class="text-xs font-bold text-white">${p.displayName || p.username}</div>
                 <div class="text-[11px] text-emerald-400">@${p.username}</div>
               </div>
             </div>
@@ -1053,7 +1056,8 @@ function renderLobbyViews() {
         `);
       }
     }
-    document.getElementById('gridStagingPlayers').innerHTML = slotsHtml.join('');
+    const gridStg = document.getElementById('gridStagingPlayers');
+    if (gridStg) gridStg.innerHTML = slotsHtml.join('');
   } else if (stagingPanel) {
     stagingPanel.classList.add('hidden');
   }
@@ -1061,10 +1065,16 @@ function renderLobbyViews() {
 
 function syncActiveRoomUI(room) {
   const navBadge = document.getElementById('navRoomBadge');
-  navBadge.classList.remove('hidden');
-  navBadge.classList.add('flex');
-  document.getElementById('navRoomName').textContent = room.title;
-  document.getElementById('navRoomCode').textContent = `#${room.code}`;
+  if (navBadge) {
+    navBadge.classList.remove('hidden');
+    navBadge.classList.add('flex');
+  }
+  
+  const nameEl = document.getElementById('navRoomName');
+  if (nameEl) nameEl.textContent = room.title;
+  
+  const codeEl = document.getElementById('navRoomCode');
+  if (codeEl) codeEl.textContent = `#${room.code}`;
 
   if (room.status === 'waiting') {
     showViewSection('lobby');
@@ -1096,19 +1106,20 @@ function renderFullBoardGame(room) {
 
 function renderMonopolyGrid(room) {
   const boardEl = document.getElementById('monopolyBoardGrid');
+  if (!boardEl) return;
   const propsState = room.properties || {};
+  const activePlayer = (room.players || [])[room.turnIndex || 0] || {};
 
   const tilesHtml = BOARD_TILES.map((tile) => {
     const pos = getGridPositionForTile(tile.id);
     const propData = propsState[tile.id] || null;
     const owner = propData && propData.owner
-      ? room.players.find(p => p.username === propData.owner)
+      ? (room.players || []).find(p => p.username === propData.owner)
       : null;
     const houses = propData ? (propData.houses || 0) : 0;
     const isMortgaged = propData && propData.mortgaged;
 
-    const standingPlayers = room.players.filter(p => !p.bankrupt && p.position === tile.id);
-    const activePlayer = room.players[room.turnIndex];
+    const standingPlayers = (room.players || []).filter(p => !p.bankrupt && p.position === tile.id);
 
     let headerBarHtml = '';
     if (tile.group && GROUP_COLORS[tile.group]) {
@@ -1127,7 +1138,7 @@ function renderMonopolyGrid(room) {
     }
 
     const ownerStripHtml = owner
-      ? `<div class="w-full h-2 border-t border-black/40" style="background-color: ${owner.color}" title="Owned by @${owner.username}"></div>`
+      ? `<div class="w-full h-2 border-t border-black/40" style="background-color: ${owner.color || '#fff'}" title="Owned by @${owner.username}"></div>`
       : '';
 
     const isSelected = selectedInspectTileId === tile.id;
@@ -1145,9 +1156,9 @@ function renderMonopolyGrid(room) {
         <div class="tile-tokens">
           ${standingPlayers.map(p => `
             <div class="player-token-pin ${activePlayer && activePlayer.username === p.username ? 'active-turn' : ''}"
-              style="background-color: ${p.color}"
+              style="background-color: ${p.color || '#fff'}"
               title="@${p.username} ($${p.money})">
-              ${p.emoji}
+              ${p.emoji || '👤'}
             </div>
           `).join('')}
         </div>
@@ -1171,12 +1182,12 @@ function renderMonopolyGrid(room) {
 }
 
 function buildCenterCommandHubHtml(room) {
-  const activePlayer = room.players[room.turnIndex] || room.players[0];
-  const currentTile = BOARD_TILES[activePlayer.position];
+  const activePlayer = (room.players || [])[room.turnIndex || 0] || { username: 'unknown', position: 0, money: 0 };
+  const currentTile = BOARD_TILES[activePlayer.position || 0];
   const d1 = room.lastDice ? room.lastDice[0] : 6;
   const d2 = room.lastDice ? room.lastDice[1] : 6;
 
-  const isMyTurn = myAccount && (
+  const isMyTurn = myAccount && activePlayer.username && (
     activePlayer.username === myAccount.username || 
     (activePlayer.isSimulated && room.hostUsername === myAccount.username)
   );
@@ -1203,12 +1214,12 @@ function buildCenterCommandHubHtml(room) {
         phaseActionsHtml = `
           <div class="flex flex-wrap items-center justify-center gap-2 mt-2">
             <button id="btnRollDice" class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow">
-              Roll for Doubles (${activePlayer.jailTurns + 1}/3)
+              Roll for Doubles (${(activePlayer.jailTurns || 0) + 1}/3)
             </button>
-            <button id="btnPayBail" ${activePlayer.money < 50 ? 'disabled' : ''} class="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-50 disabled:opacity-40 text-white font-bold text-xs">
+            <button id="btnPayBail" ${activePlayer.money < 50 ? 'disabled' : ''} class="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-bold text-xs">
               Pay $50 Bail
             </button>
-            ${activePlayer.jailFreeCards > 0 ? `
+            ${(activePlayer.jailFreeCards || 0) > 0 ? `
               <button id="btnUseJailCard" class="px-3.5 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-bold text-xs">
                 Use Jail Free Card
               </button>
@@ -1223,7 +1234,7 @@ function buildCenterCommandHubHtml(room) {
         `;
       }
     } else if (room.turnPhase === 'BUY_DECISION') {
-      const canAfford = activePlayer.money >= currentTile.price;
+      const canAfford = activePlayer.money >= (currentTile.price || 0);
       phaseActionsHtml = `
         <div class="flex flex-col items-center gap-2 mt-2">
           <div class="text-xs font-bold text-slate-800">Unowned Property: <span>${currentTile.name} ($${currentTile.price})</span></div>
@@ -1300,10 +1311,10 @@ function buildCenterCommandHubHtml(room) {
 
       <div class="flex-1 flex flex-col items-center justify-center my-3 px-4 py-3 rounded-xl bg-white/85 border-2 border-slate-800 shadow-sm">
         <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-400 mb-2">
-          <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs border border-black" style="background:${activePlayer.color}">${activePlayer.emoji}</span>
-          <span class="text-xs font-bold text-slate-900">${activePlayer.displayName}</span>
+          <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs border border-black" style="background:${activePlayer.color || '#fff'}">${activePlayer.emoji || '👤'}</span>
+          <span class="text-xs font-bold text-slate-900">${activePlayer.displayName || activePlayer.username}</span>
           <span class="text-xs text-slate-600">(@${activePlayer.username})</span>
-          <span class="text-xs font-extrabold text-emerald-700 ml-1">$${activePlayer.money}</span>
+          <span class="text-xs font-extrabold text-emerald-700 ml-1">$${activePlayer.money || 0}</span>
         </div>
 
         <div class="flex items-center gap-4 my-2">
@@ -1316,7 +1327,7 @@ function buildCenterCommandHubHtml(room) {
         </div>
 
         <div class="text-xs text-slate-700 mb-1 text-center">
-          Current Space: <strong class="text-slate-950">${currentTile.name}</strong>
+          Current Space: <strong class="text-slate-950">${currentTile ? currentTile.name : 'Unknown'}</strong>
           ${activePlayer.inJail ? '<span class="ml-1 text-red-600 font-bold">(In Jail)</span>' : ''}
         </div>
 
@@ -1796,7 +1807,8 @@ async function executeDeclareBankruptcy(room) {
 }
 
 async function executeEndTurn(room) {
-  const totalPlayers = room.players.length;
+  const totalPlayers = (room.players || []).length;
+  if (totalPlayers < 2) return;
   let nextIdx = room.turnIndex;
   for (let i = 0; i < totalPlayers; i++) {
     nextIdx = (nextIdx + 1) % totalPlayers;
@@ -1826,7 +1838,7 @@ function canBuildHouseOnTile(room, tile, ownerUsername) {
   if ((st.houses || 0) >= 5) return false;
   if (!playerOwnsFullColorGroup(room, ownerUsername, tile.group)) return false;
 
-  const player = room.players.find(p => p.username === ownerUsername);
+  const player = (room.players || []).find(p => p.username === ownerUsername);
   if (!player || player.money < tile.houseCost) return false;
 
   const groupTiles = BOARD_TILES.filter(t => t.group === tile.group);
@@ -1923,12 +1935,13 @@ async function handleToggleMortgage(room, tileId) {
 // ============================================================================
 function renderPlayerRoster(room) {
   const container = document.getElementById('gamePlayerRoster');
-  const activePlayer = room.players[room.turnIndex];
+  if (!container) return;
+  const activePlayer = (room.players || [])[room.turnIndex || 0] || {};
 
-  container.innerHTML = room.players.map((p) => {
+  container.innerHTML = (room.players || []).map((p) => {
     const isTurn = activePlayer && activePlayer.username === p.username && !p.bankrupt;
-    const propCount = Object.values(room.properties).filter(st => st.owner === p.username).length;
-    const tileName = BOARD_TILES[p.position]?.name || 'Start Line';
+    const propCount = Object.values(room.properties || {}).filter(st => st.owner === p.username).length;
+    const tileName = (BOARD_TILES[p.position || 0] || {}).name || 'Start Line';
 
     return `
       <div class="p-2.5 rounded-lg border transition flex items-center justify-between gap-2 ${
@@ -1940,12 +1953,12 @@ function renderPlayerRoster(room) {
       }">
         <div class="flex items-center gap-2.5 min-w-0">
           <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0"
-            style="background:${p.color}30; border:2px solid ${p.color}">
-            ${p.emoji}
+            style="background:${p.color || '#fff'}30; border:2px solid ${p.color || '#fff'}">
+            ${p.emoji || '👤'}
           </div>
           <div class="min-w-0">
             <div class="flex items-center gap-1.5">
-              <span class="text-xs font-bold text-white truncate">${p.displayName}</span>
+              <span class="text-xs font-bold text-white truncate">${p.displayName || p.username}</span>
               <span class="text-[11px] text-emerald-400">@${p.username}</span>
             </div>
             <div class="text-[11px] text-slate-400 truncate">
@@ -1956,8 +1969,8 @@ function renderPlayerRoster(room) {
         </div>
 
         <div class="text-right shrink-0">
-          <div class="text-xs font-extrabold ${p.money < 100 ? 'text-red-400' : 'text-emerald-400'}">
-            $${p.money}
+          <div class="text-xs font-extrabold ${(p.money || 0) < 100 ? 'text-red-400' : 'text-emerald-400'}">
+            $${p.money || 0}
           </div>
           ${!p.bankrupt ? `
             <button data-partner="${p.username}" class="btn-quick-trade text-[11px] text-amber-300 hover:underline font-semibold">
@@ -1976,13 +1989,14 @@ function renderPlayerRoster(room) {
 
 function renderPortfolioSidebar(room) {
   const sel = document.getElementById('selectPortfolioPlayer');
-  if (!selectedPortfolioPlayerId || !room.players.some(p => p.username === selectedPortfolioPlayerId)) {
-    selectedPortfolioPlayerId = room.players[room.turnIndex]?.username || room.players[0]?.username;
+  if (!sel) return;
+  if (!selectedPortfolioPlayerId || !(room.players || []).some(p => p.username === selectedPortfolioPlayerId)) {
+    selectedPortfolioPlayerId = ((room.players || [])[room.turnIndex || 0] || {}).username || ((room.players || [])[0] || {}).username;
   }
 
-  sel.innerHTML = room.players.map(p => `
+  sel.innerHTML = (room.players || []).map(p => `
     <option value="${p.username}" ${p.username === selectedPortfolioPlayerId ? 'selected' : ''}>
-      @${p.username} (${p.displayName})
+      @${p.username} (${p.displayName || p.username})
     </option>
   `).join('');
 
@@ -1991,8 +2005,9 @@ function renderPortfolioSidebar(room) {
     renderPortfolioSidebar(room);
   };
 
-  const ownedTiles = BOARD_TILES.filter(t => room.properties[t.id]?.owner === selectedPortfolioPlayerId);
+  const ownedTiles = BOARD_TILES.filter(t => (room.properties || {})[t.id]?.owner === selectedPortfolioPlayerId);
   const listEl = document.getElementById('portfolioDeedList');
+  if (!listEl) return;
 
   if (ownedTiles.length === 0) {
     listEl.innerHTML = `<div class="text-xs text-slate-400 text-center py-4">No properties owned yet.</div>`;
@@ -2029,9 +2044,10 @@ function renderPortfolioSidebar(room) {
 
 function renderDeedInspector(room, tileId) {
   const card = document.getElementById('deedInspectorCard');
+  if (!card) return;
   const tile = BOARD_TILES[tileId] || BOARD_TILES[0];
-  const st = room.properties[tile.id] || null;
-  const owner = st && st.owner ? room.players.find(p => p.username === st.owner) : null;
+  const st = (room.properties || {})[tile.id] || null;
+  const owner = st && st.owner ? (room.players || []).find(p => p.username === st.owner) : null;
   const grp = tile.group ? GROUP_COLORS[tile.group] : null;
 
   if (tile.type !== 'prop' && tile.type !== 'transit' && tile.type !== 'utility') {
@@ -2082,7 +2098,7 @@ function renderDeedInspector(room, tileId) {
 
   let manageControlsHtml = '';
   if (owner) {
-    const isMe = myAccount && (
+    const isMe = myAccount && owner.username && (
       owner.username === myAccount.username ||
       (owner.isSimulated && room.hostUsername === myAccount.username)
     );
@@ -2096,7 +2112,7 @@ function renderDeedInspector(room, tileId) {
         <div class="space-y-2 pt-2 border-t border-slate-300 text-slate-900">
           <div class="flex items-center justify-between text-xs">
             <span class="text-slate-600">Owner:</span>
-            <span class="font-bold text-emerald-800">${owner.emoji} @${owner.username} (You)</span>
+            <span class="font-bold text-emerald-800">${owner.emoji || '👤'} @${owner.username} (You)</span>
           </div>
           <div class="grid grid-cols-2 gap-2">
             ${tile.type === 'prop' ? `
@@ -2118,7 +2134,7 @@ function renderDeedInspector(room, tileId) {
         <div class="pt-2 border-t border-slate-300 text-slate-900 text-xs">
           <div class="flex items-center justify-between">
             <span class="text-slate-600">Owner:</span>
-            <span class="font-bold">${owner.emoji} @${owner.username}</span>
+            <span class="font-bold">${owner.emoji || '👤'} @${owner.username}</span>
           </div>
         </div>
       `;
@@ -2153,8 +2169,11 @@ function renderDeedInspector(room, tileId) {
 }
 
 function renderActivityLog(room) {
-  document.getElementById('logTurnCounter').textContent = `Turn #${room.turnNumber || 1}`;
+  const counter = document.getElementById('logTurnCounter');
+  if (counter) counter.textContent = `Turn #${room.turnNumber || 1}`;
+  
   const logEl = document.getElementById('gameActivityLog');
+  if (!logEl) return;
   const logs = room.logs || [];
 
   logEl.innerHTML = logs.map((item, i) => `
@@ -2169,7 +2188,7 @@ function renderActivityLog(room) {
 // ============================================================================
 function openTradeHubModal(room, defaultPartnerUsername = null) {
   const modal = document.getElementById('modalTradeHub');
-  const activePlayers = room.players.filter(p => !p.bankrupt);
+  const activePlayers = (room.players || []).filter(p => !p.bankrupt);
   
   if (!myAccount) return;
   const amIPlaying = activePlayers.some(p => p.username === myAccount.username);
@@ -2184,14 +2203,12 @@ function openTradeHubModal(room, defaultPartnerUsername = null) {
   const selFrom = document.getElementById('selectTradeFromPlayer');
   const selTo = document.getElementById('selectTradeToPlayer');
 
-  // FIXED: Lock "Player 1 Offers" exactly to the person currently signed in
   const defaultFrom = myAccount.username;
   const fromChoices = activePlayers.filter(p => p.username === defaultFrom);
   
   selFrom.innerHTML = fromChoices.map(p => `<option value="${p.username}" selected>@${p.username} (You)</option>`).join('');
   selFrom.disabled = true;
 
-  // Player 2 Gives is everyone EXCEPT you
   const toChoices = activePlayers.filter(p => p.username !== defaultFrom);
   if (toChoices.length === 0) return;
 
@@ -2360,7 +2377,7 @@ function syncTradeAndAuctionModals(room) {
     
     const amITarget = myAccount && (
       tr.to === myAccount.username || 
-      (room.hostUsername === myAccount.username && room.players.find(p => p.username === tr.to)?.isSimulated)
+      (room.hostUsername === myAccount.username && (room.players || []).find(p => p.username === tr.to)?.isSimulated)
     );
 
     if (amITarget) {
@@ -2417,7 +2434,7 @@ function syncTradeAndAuctionModals(room) {
     document.getElementById('auctionHighBid').textContent = `$${auc.highBid}`;
     document.getElementById('auctionHighBidder').textContent = `Leader: @${auc.highBidder}`;
 
-    const biddersHtml = room.players.filter(p => !p.bankrupt).map(p => {
+    const biddersHtml = (room.players || []).filter(p => !p.bankrupt).map(p => {
       const next10 = auc.highBid + 10;
       const next50 = auc.highBid + 50;
       
@@ -2429,7 +2446,7 @@ function syncTradeAndAuctionModals(room) {
       return `
         <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-between gap-2">
           <div class="min-w-0">
-            <div class="text-xs font-bold text-white truncate">${p.emoji} @${p.username}</div>
+            <div class="text-xs font-bold text-white truncate">${p.emoji || '👤'} @${p.username}</div>
             <div class="text-[11px] text-emerald-400">$${p.money}</div>
           </div>
           <div class="flex items-center gap-1">
@@ -2449,20 +2466,22 @@ function syncTradeAndAuctionModals(room) {
     }).join('');
 
     const listEl = document.getElementById('auctionBiddersList');
-    listEl.innerHTML = biddersHtml;
-    listEl.querySelectorAll('.btn-auction-bid').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        room.activeAuction.highBidder = btn.dataset.user;
-        room.activeAuction.highBid = parseInt(btn.dataset.bid, 10);
-        playSfx('cash');
-        await saveRoomState(room);
+    if (listEl) {
+      listEl.innerHTML = biddersHtml;
+      listEl.querySelectorAll('.btn-auction-bid').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          room.activeAuction.highBidder = btn.dataset.user;
+          room.activeAuction.highBid = parseInt(btn.dataset.bid, 10);
+          playSfx('cash');
+          await saveRoomState(room);
+        });
       });
-    });
+    }
 
     const isHost = myAccount && room.hostUsername === myAccount.username;
     const btnFinalize = document.getElementById('btnFinalizeAuction');
     
-    if (isHost) {
+    if (isHost && btnFinalize) {
       btnFinalize.style.display = 'block';
       btnFinalize.onclick = async () => {
         const winner = room.players.find(p => p.username === auc.highBidder);
@@ -2483,7 +2502,7 @@ function syncTradeAndAuctionModals(room) {
         playSfx('buy');
         await saveRoomState(room);
       };
-    } else {
+    } else if (btnFinalize) {
       btnFinalize.style.display = 'none';
     }
   } else {
@@ -2516,7 +2535,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('btnLeaveRoom').addEventListener('click', () => {
     currentRoomId = null;
-    document.getElementById('navRoomBadge').classList.add('hidden');
+    const badge = document.getElementById('navRoomBadge');
+    if (badge) badge.classList.add('hidden');
     showViewSection('lobby');
     renderLobbyViews();
   });
@@ -2529,18 +2549,26 @@ window.addEventListener('DOMContentLoaded', async () => {
     input.value = '';
   });
   document.getElementById('btnAddHotseatPlayer').addEventListener('click', addHotseatSimulatedPlayer);
-  document.getElementById('btnStartBoardGame').addEventListener('click', startRoomBoardGame);
+  
+  const startBtn = document.getElementById('btnStartBoardGame');
+  if (startBtn) startBtn.addEventListener('click', startRoomBoardGame);
 
   document.getElementById('btnOpenTradeHubSidebar').addEventListener('click', () => {
     if (currentRoomId && allRoomsMap[currentRoomId]) openTradeHubModal(allRoomsMap[currentRoomId]);
   });
-  document.getElementById('btnCloseTradeModal').addEventListener('click', () => {
+  
+  const btnClose = document.getElementById('btnCloseTradeModal');
+  if (btnClose) btnClose.addEventListener('click', () => {
     document.getElementById('modalTradeHub').classList.add('hidden');
   });
-  document.getElementById('btnCancelTradeModal').addEventListener('click', () => {
+
+  const btnCancel = document.getElementById('btnCancelTradeModal');
+  if (btnCancel) btnCancel.addEventListener('click', () => {
     document.getElementById('modalTradeHub').classList.add('hidden');
   });
-  document.getElementById('btnSubmitTradeProposal').addEventListener('click', submitTradeProposal);
+  
+  const btnSubmitTrade = document.getElementById('btnSubmitTradeProposal');
+  if (btnSubmitTrade) btnSubmitTrade.addEventListener('click', submitTradeProposal);
 
   await initDatabaseAndAuth();
 });
