@@ -1,60 +1,59 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>COPYPOLY — 8-Player Online Board Tycoon</title>
+  <title>COPYPOLY — 8-Player Classic Board Game</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-  
-  <!-- Link to the CSS file -->
   <link rel="stylesheet" href="style.css">
 </head>
-<body class="min-h-screen flex flex-col bg-slate-950 text-slate-100">
+<body class="min-h-screen flex flex-col bg-slate-900 text-slate-100">
 
   <!-- TOP NAVIGATION BAR -->
-  <header class="h-14 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md px-4 flex items-center justify-between sticky top-0 z-40">
+  <header class="h-14 border-b border-slate-700 bg-slate-800 px-4 flex items-center justify-between sticky top-0 z-40 shadow-sm">
     <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 via-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 font-display font-extrabold text-slate-950 text-lg tracking-tighter">
-        CP
+      <div class="px-2.5 py-1 rounded bg-red-600 border-2 border-white shadow font-extrabold text-white text-sm tracking-wider">
+        COPYPOLY
       </div>
-      <div>
-        <div class="flex items-center gap-2">
-          <span class="font-display font-extrabold text-lg tracking-tight bg-gradient-to-r from-emerald-400 via-cyan-300 to-indigo-400 bg-clip-text text-transparent">COPYPOLY</span>
-          <span class="text-[10px] font-mono-num uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">8-Player Live Edition</span>
-        </div>
-      </div>
+      <span class="text-xs text-slate-300 font-medium hidden sm:inline">8-Player Classic Edition</span>
     </div>
 
     <!-- Center Room Badge (when in a room) -->
-    <div id="navRoomBadge" class="hidden items-center gap-3 bg-slate-800/90 border border-slate-700/80 px-3.5 py-1.5 rounded-xl">
+    <div id="navRoomBadge" class="hidden items-center gap-3 bg-slate-900 border border-slate-700 px-3.5 py-1.5 rounded-lg">
       <div class="flex items-center gap-1.5 text-xs">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
         <span class="text-slate-400">Room:</span>
         <span id="navRoomName" class="font-bold text-white"></span>
-        <span id="navRoomCode" class="font-mono-num text-xs px-1.5 py-0.5 rounded bg-slate-900 text-cyan-300 border border-slate-700"></span>
+        <span id="navRoomCode" class="text-xs px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-600 font-semibold"></span>
       </div>
-      <button id="btnLeaveRoom" class="text-xs px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition flex items-center gap-1">
+      <button id="btnLeaveRoom" class="text-xs px-2.5 py-1 rounded bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 transition flex items-center gap-1">
         <i class="fa-solid fa-right-from-bracket"></i> Leave
       </button>
     </div>
 
-    <!-- Right User Profile & Controls -->
-    <div class="flex items-center gap-3">
-      <button id="btnToggleSound" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300 transition" title="Toggle Sound Effects">
+    <!-- Right Controls & LIVE DATABASE INDICATOR BUTTON -->
+    <div class="flex items-center gap-2.5">
+      <!-- Top-Right Database Status Indicator Button -->
+      <button id="btnDbStatus" type="button" class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs font-semibold flex items-center gap-2 hover:bg-slate-700 transition" title="Click to check database connection details">
+        <span id="dbStatusDot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+        <span id="dbStatusText" class="text-slate-200">Checking DB...</span>
+      </button>
+
+      <button id="btnToggleSound" class="w-9 h-9 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300 transition" title="Toggle Sound Effects">
         <i id="iconSound" class="fa-solid fa-volume-high text-emerald-400"></i>
       </button>
 
-      <div id="navUserBox" class="hidden items-center gap-2.5 pl-2 pr-3 py-1 rounded-xl bg-slate-800/80 border border-slate-700">
+      <div id="navUserBox" class="hidden items-center gap-2.5 pl-2 pr-3 py-1 rounded-lg bg-slate-900 border border-slate-700">
         <div id="navUserAvatar" class="w-7 h-7 rounded-full flex items-center justify-center text-sm border border-white/40"></div>
         <div class="text-xs leading-tight">
           <div id="navUserDisplay" class="font-bold text-slate-100"></div>
-          <div id="navUsername" class="font-mono-num text-[11px] text-emerald-400"></div>
+          <div id="navUsername" class="text-[11px] text-emerald-400 font-medium"></div>
         </div>
-        <button id="btnSwitchAccount" class="ml-1 text-slate-400 hover:text-white text-xs px-1.5 py-1 rounded hover:bg-slate-700/60 transition" title="Switch @username Account">
+        <button id="btnSwitchAccount" class="ml-1 text-slate-400 hover:text-white text-xs px-1.5 py-1 rounded hover:bg-slate-700 transition" title="Switch Account">
           <i class="fa-solid fa-user-gear"></i>
         </button>
       </div>
@@ -66,61 +65,55 @@
 
     <!-- VIEW 1: AUTH / ACCOUNT & USERNAME CLAIM -->
     <section id="viewAuth" class="flex-1 flex items-center justify-center p-4">
-      <div class="w-full max-w-md bg-slate-900/95 border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
-        <div class="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div class="absolute -bottom-24 -left-24 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
+      <div class="w-full max-w-md bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-xl">
         <div class="text-center mb-6">
-          <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-500 text-slate-950 font-display font-black text-2xl shadow-lg shadow-emerald-500/20 mb-3">
-            🎲
+          <div class="inline-block px-4 py-1.5 rounded bg-red-600 border-2 border-white text-white font-extrabold text-xl tracking-wide shadow mb-3">
+            COPYPOLY
           </div>
-          <h1 class="text-2xl font-display font-extrabold text-white">Welcome to COPYPOLY</h1>
-          <p class="text-xs text-slate-400 mt-1">Create an account or log in with your unique <span class="text-emerald-400 font-mono-num">@username</span> to play & trade with up to 8 players.</p>
+          <h1 class="text-xl font-bold text-white">Sign In or Create Account</h1>
+          <p class="text-xs text-slate-300 mt-1">Pick a <span class="text-emerald-400 font-semibold">@username</span> to play & trade with up to 8 players.</p>
         </div>
 
-        <div class="grid grid-cols-2 gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800 mb-5">
-          <button id="tabAuthRegister" class="py-2 text-xs font-bold rounded-lg bg-emerald-500 text-slate-950 transition">
+        <div class="grid grid-cols-2 gap-1 p-1 bg-slate-900 rounded-lg border border-slate-700 mb-5">
+          <button id="tabAuthRegister" class="py-2 text-xs font-bold rounded-md bg-emerald-600 text-white transition">
             Create Account
           </button>
-          <button id="tabAuthLogin" class="py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition">
+          <button id="tabAuthLogin" class="py-2 text-xs font-bold rounded-md text-slate-400 hover:text-white transition">
             Existing @username
           </button>
         </div>
 
         <form id="formAuth" class="space-y-4">
           <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Unique Username</label>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Username</label>
             <div class="relative">
-              <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-400 font-mono-num font-bold text-sm">@</span>
-              <input id="inputAuthUsername" type="text" maxlength="18" required placeholder="cyber_tycoon"
-                class="w-full pl-8 pr-4 py-2.5 bg-slate-950 border border-slate-700/80 focus:border-emerald-400 rounded-xl text-sm text-white font-mono-num outline-none transition" />
+              <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">@</span>
+              <input id="inputAuthUsername" type="text" maxlength="18" required placeholder="player_one"
+                class="w-full pl-8 pr-4 py-2.5 bg-slate-900 border border-slate-600 focus:border-emerald-500 rounded-lg text-sm text-white outline-none transition" />
             </div>
-            <p class="text-[11px] text-slate-500 mt-1">Friends will invite you to 8-player lobbies using this @username.</p>
           </div>
 
           <div id="fieldDisplayName">
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Display Name / Tycoon Alias</label>
-            <input id="inputAuthDisplayName" type="text" maxlength="22" placeholder="Lord Monopoly"
-              class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 focus:border-emerald-400 rounded-xl text-sm text-white outline-none transition" />
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Display Name</label>
+            <input id="inputAuthDisplayName" type="text" maxlength="22" placeholder="Alex"
+              class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-600 focus:border-emerald-500 rounded-lg text-sm text-white outline-none transition" />
           </div>
 
           <div>
             <label class="block text-xs font-semibold text-slate-300 mb-1">Passcode / PIN (4+ chars)</label>
             <input id="inputAuthPin" type="password" maxlength="20" required placeholder="••••"
-              class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 focus:border-emerald-400 rounded-xl text-sm text-white font-mono-num outline-none transition" />
+              class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-600 focus:border-emerald-500 rounded-lg text-sm text-white outline-none transition" />
           </div>
 
           <div id="fieldTokenPicker">
-            <label class="block text-xs font-semibold text-slate-300 mb-2">Choose Your Signature Board Token</label>
-            <div id="authTokenGrid" class="grid grid-cols-4 gap-2">
-              <!-- Populated by JS -->
-            </div>
+            <label class="block text-xs font-semibold text-slate-300 mb-2">Choose Your Board Token</label>
+            <div id="authTokenGrid" class="grid grid-cols-4 gap-2"></div>
           </div>
 
-          <div id="authErrorMsg" class="hidden text-xs text-rose-400 bg-rose-500/10 border border-rose-500/30 rounded-xl px-3 py-2"></div>
+          <div id="authErrorMsg" class="hidden text-xs text-red-300 bg-red-900/40 border border-red-500/40 rounded-lg px-3 py-2"></div>
 
-          <button id="btnAuthSubmit" type="submit" class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-display font-extrabold text-sm shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2">
-            <span>Enter COPYPOLY Lobby</span>
+          <button id="btnAuthSubmit" type="submit" class="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow transition flex items-center justify-center gap-2">
+            <span>Enter Game Lobby</span>
             <i class="fa-solid fa-arrow-right"></i>
           </button>
         </form>
@@ -132,69 +125,54 @@
       
       <!-- Left Column -->
       <div class="lg:col-span-5 space-y-6">
-        <!-- Create Room Card -->
-        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h2 class="text-lg font-display font-bold text-white flex items-center gap-2">
-                <i class="fa-solid fa-plus-circle text-emerald-400"></i> Host New COPYPOLY Game
-              </h2>
-              <p class="text-xs text-slate-400">Start an 8-player room and invite friends via <span class="text-emerald-400 font-mono-num">@username</span></p>
-            </div>
-          </div>
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow">
+          <h2 class="text-base font-bold text-white mb-1">Host a New Game</h2>
+          <p class="text-xs text-slate-300 mb-4">Create a room for up to 8 players and invite friends by their @username.</p>
           <form id="formCreateRoom" class="space-y-3">
             <div>
-              <label class="block text-xs font-semibold text-slate-300 mb-1">Room Title</label>
-              <input id="inputRoomTitle" type="text" maxlength="28" required placeholder="5AM Vibe Coding Syndicate"
-                class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-400" />
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Room Name</label>
+              <input id="inputRoomTitle" type="text" maxlength="28" required placeholder="Friday Night Monopoly"
+                class="w-full px-3.5 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm text-white outline-none focus:border-emerald-500" />
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="block text-xs font-semibold text-slate-300 mb-1">Starting Cash</label>
-                <select id="selectStartingCash" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-emerald-400">
-                  <option value="1500" selected>$1,500 (Standard)</option>
-                  <option value="2000">$2,000 (High Roller)</option>
-                  <option value="2500">$2,500 (Mega Tycoon)</option>
+                <select id="selectStartingCash" class="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm text-white outline-none">
+                  <option value="1500" selected>$1,500 (Classic)</option>
+                  <option value="2000">$2,000</option>
+                  <option value="2500">$2,500</option>
                 </select>
               </div>
               <div>
-                <label class="block text-xs font-semibold text-slate-300 mb-1">Max Players</label>
-                <div class="px-3 py-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-sm text-emerald-400 font-bold flex items-center gap-2">
-                  <i class="fa-solid fa-users"></i> Up to 8 Players
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Player Limit</label>
+                <div class="px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-emerald-400 font-semibold">
+                  Up to 8 Players
                 </div>
               </div>
             </div>
-            <button type="submit" class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-500 hover:from-emerald-300 hover:to-cyan-400 text-slate-950 font-display font-extrabold text-sm shadow-lg shadow-emerald-500/20 transition">
-              <i class="fa-solid fa-rocket mr-1"></i> Create Room & Invite Players
+            <button type="submit" class="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow transition">
+              Create Room
             </button>
           </form>
         </div>
 
-        <!-- Incoming Invitations Inbox -->
-        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <!-- Incoming Invitations -->
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow">
           <div class="flex items-center justify-between mb-3">
-            <h3 class="text-base font-display font-bold text-white flex items-center gap-2">
-              <i class="fa-solid fa-envelope-open-text text-cyan-400"></i> Your Live Game Invites
-            </h3>
-            <span id="badgeInviteCount" class="text-xs font-mono-num px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">0</span>
+            <h3 class="text-sm font-bold text-white">Your Game Invites</h3>
+            <span id="badgeInviteCount" class="text-xs px-2 py-0.5 rounded-full bg-emerald-600/30 text-emerald-300 font-bold">0</span>
           </div>
-          <div id="listIncomingInvites" class="space-y-2.5 max-h-60 overflow-y-auto">
-            <!-- Populated by JS -->
-          </div>
+          <div id="listIncomingInvites" class="space-y-2 max-h-56 overflow-y-auto"></div>
         </div>
 
-        <!-- Registered @Username Directory -->
-        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-sm font-display font-bold text-slate-200 flex items-center gap-2">
-              <i class="fa-solid fa-address-book text-amber-400"></i> Registered @Usernames Directory
-            </h3>
-            <span id="badgeUserCount" class="text-[11px] font-mono-num text-slate-400">0 users</span>
+        <!-- Registered @Usernames -->
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow">
+          <div class="flex items-center justify-between mb-1">
+            <h3 class="text-sm font-bold text-white">Registered Players</h3>
+            <span id="badgeUserCount" class="text-xs text-slate-400">0 users</span>
           </div>
-          <p class="text-xs text-slate-400 mb-3">Click any username when inside a room lobby to invite them directly.</p>
-          <div id="listRegisteredUsers" class="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
-            <!-- Populated by JS -->
-          </div>
+          <p class="text-xs text-slate-400 mb-3">Click a username while in a lobby to invite them.</p>
+          <div id="listRegisteredUsers" class="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto"></div>
         </div>
       </div>
 
@@ -202,130 +180,95 @@
       <div class="lg:col-span-7 space-y-6">
         
         <!-- ACTIVE ROOM STAGING PANEL -->
-        <div id="panelRoomStaging" class="hidden bg-slate-900/95 border-2 border-emerald-500/40 rounded-2xl p-6 shadow-2xl space-y-5">
-          <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div id="panelRoomStaging" class="hidden bg-slate-800 border-2 border-emerald-500/60 rounded-xl p-5 shadow-xl space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-3">
             <div>
-              <div class="flex items-center gap-2">
-                <span class="px-2 py-0.5 text-[10px] font-mono-num uppercase bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">Lobby Staging</span>
-                <span id="stagingRoomCode" class="font-mono-num text-xs text-cyan-400"></span>
-              </div>
-              <h2 id="stagingRoomTitle" class="text-2xl font-display font-extrabold text-white mt-1"></h2>
+              <span id="stagingRoomCode" class="text-xs font-bold text-emerald-400"></span>
+              <h2 id="stagingRoomTitle" class="text-xl font-bold text-white"></h2>
             </div>
-            <div class="flex items-center gap-2">
-              <span id="stagingSeatCounter" class="text-sm font-mono-num font-bold px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-emerald-400">1 / 8 Players</span>
-            </div>
+            <span id="stagingSeatCounter" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-emerald-400">1 / 8 Players</span>
           </div>
 
-          <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-4">
-            <label class="block text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">
-              <i class="fa-solid fa-paper-plane mr-1"></i> Invite Player by @username
-            </label>
+          <div class="bg-slate-900 border border-slate-700 rounded-lg p-3.5">
+            <label class="block text-xs font-bold text-slate-200 mb-2">Invite Player by @username</label>
             <form id="formSendInvite" class="flex flex-col sm:flex-row gap-2">
               <div class="relative flex-1">
-                <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-400 font-mono-num font-bold text-sm">@</span>
-                <input id="inputInviteUsername" type="text" placeholder="type friend's username..."
-                  class="w-full pl-8 pr-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white font-mono-num outline-none focus:border-emerald-400" />
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">@</span>
+                <input id="inputInviteUsername" type="text" placeholder="friend_username"
+                  class="w-full pl-7 pr-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-sm text-white outline-none focus:border-emerald-500" />
               </div>
-              <button type="submit" class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition whitespace-nowrap">
-                Send Live Invite
+              <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition">
+                Send Invite
               </button>
-              <button id="btnAddHotseatPlayer" type="button" class="px-3.5 py-2.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 font-bold text-xs transition whitespace-nowrap" title="Add a local/simulated seat so you can test 8-player trading & gameplay immediately">
-                <i class="fa-solid fa-user-plus mr-1"></i> + Add Local Seat
+              <button id="btnAddHotseatPlayer" type="button" class="px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold text-xs transition">
+                + Add Local Player
               </button>
             </form>
             <div id="inviteStatusFeedback" class="text-xs mt-2 hidden"></div>
           </div>
 
           <div>
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Seats in Room (Max 8 Players)</h3>
-            <div id="gridStagingPlayers" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <!-- Populated by JS -->
-            </div>
+            <h3 class="text-xs font-bold uppercase text-slate-400 mb-2">Players in Room (Max 8)</h3>
+            <div id="gridStagingPlayers" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5"></div>
           </div>
 
-          <div class="pt-2 flex items-center justify-between gap-4 border-t border-slate-800">
-            <p class="text-xs text-slate-400">Need at least 2 players to launch the board.</p>
-            <button id="btnStartBoardGame" class="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500 hover:opacity-95 text-slate-950 font-display font-extrabold text-sm shadow-xl shadow-emerald-500/25 transition flex items-center gap-2">
-              <i class="fa-solid fa-play"></i> Launch COPYPOLY Board
+          <div class="pt-3 flex items-center justify-between gap-4 border-t border-slate-700">
+            <p class="text-xs text-slate-300">At least 2 players required to start.</p>
+            <button id="btnStartBoardGame" class="px-6 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow transition">
+              Start Game
             </button>
           </div>
         </div>
 
         <!-- ALL ACTIVE ROOMS LIST -->
-        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h2 class="text-lg font-display font-bold text-white flex items-center gap-2">
-                <i class="fa-solid fa-globe text-emerald-400"></i> Live COPYPOLY Rooms
-              </h2>
-              <p class="text-xs text-slate-400">Join an open waiting room or reconnect to an active 8-player match</p>
-            </div>
-          </div>
-          <div id="listPublicRooms" class="space-y-3">
-            <!-- Populated by JS -->
-          </div>
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow">
+          <h2 class="text-base font-bold text-white mb-1">Open Game Rooms</h2>
+          <p class="text-xs text-slate-400 mb-4">Join an open lobby or reconnect to an ongoing match.</p>
+          <div id="listPublicRooms" class="space-y-2.5"></div>
         </div>
 
       </div>
     </section>
 
     <!-- VIEW 3: ACTIVE 8-PLAYER GAME BOARD -->
-    <section id="viewGame" class="hidden flex-1 w-full max-w-[1600px] mx-auto p-2 sm:p-3 lg:p-4 grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+    <section id="viewGame" class="hidden flex-1 w-full max-w-[1600px] mx-auto p-2 sm:p-4 grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
       
       <!-- LEFT SIDEBAR -->
       <div class="xl:col-span-3 space-y-3 order-2 xl:order-1">
-        <div class="bg-slate-900/95 border border-slate-800 rounded-2xl p-3.5 shadow-xl">
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-3.5 shadow">
           <div class="flex items-center justify-between mb-2.5">
-            <h2 class="text-xs font-display font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <i class="fa-solid fa-users text-emerald-400"></i> Tycoon Roster (Up to 8)
-            </h2>
-            <button id="btnOpenTradeHubSidebar" class="text-xs px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold transition flex items-center gap-1">
-              <i class="fa-solid fa-handshake"></i> Trade Hub
+            <h2 class="text-xs font-bold uppercase text-slate-300">Players (Up to 8)</h2>
+            <button id="btnOpenTradeHubSidebar" class="text-xs px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition">
+              Trade
             </button>
           </div>
-          <div id="gamePlayerRoster" class="space-y-2">
-            <!-- Populated by JS -->
-          </div>
+          <div id="gamePlayerRoster" class="space-y-2"></div>
         </div>
 
-        <div class="bg-slate-900/95 border border-slate-800 rounded-2xl p-3.5 shadow-xl">
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-3.5 shadow">
           <div class="flex items-center justify-between mb-2">
-            <h3 class="text-xs font-display font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <i class="fa-solid fa-building text-cyan-400"></i> Property Portfolio
-            </h3>
-            <select id="selectPortfolioPlayer" class="text-xs bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 outline-none">
-              <!-- Populated by JS -->
-            </select>
+            <h3 class="text-xs font-bold uppercase text-slate-300">Owned Properties</h3>
+            <select id="selectPortfolioPlayer" class="text-xs bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-200 outline-none"></select>
           </div>
-          <div id="portfolioDeedList" class="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-            <!-- Populated by JS -->
-          </div>
+          <div id="portfolioDeedList" class="space-y-1.5 max-h-64 overflow-y-auto pr-1"></div>
         </div>
       </div>
 
-      <!-- CENTER COLUMN -->
+      <!-- CENTER COLUMN: CLASSIC MONOPOLY BOARD -->
       <div class="xl:col-span-6 flex flex-col items-center justify-center order-1 xl:order-2 w-full overflow-x-auto">
-        <div id="monopolyBoardGrid" class="monopoly-board">
-          <!-- 40 Perimeter Tiles + Center Command Hub injected by JS -->
-        </div>
+        <div id="monopolyBoardGrid" class="monopoly-board"></div>
       </div>
 
-      <!-- RIGHT SIDEBAR -->
+      <!-- RIGHT SIDEBAR: CLASSIC TITLE DEED & LOG -->
       <div class="xl:col-span-3 space-y-3 order-3">
-        <div id="deedInspectorCard" class="bg-slate-900/95 border border-slate-800 rounded-2xl p-4 shadow-xl">
-          <!-- Populated dynamically -->
-        </div>
+        <div id="deedInspectorCard" class="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow"></div>
 
-        <div class="bg-slate-900/95 border border-slate-800 rounded-2xl p-3.5 shadow-xl flex flex-col h-72">
-          <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-800">
-            <h3 class="text-xs font-display font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <i class="fa-solid fa-bolt text-emerald-400"></i> Live Board Feed
-            </h3>
-            <span id="logTurnCounter" class="text-[11px] font-mono-num text-slate-400">Turn #1</span>
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-3.5 shadow flex flex-col h-72">
+          <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-700">
+            <h3 class="text-xs font-bold uppercase text-slate-300">Game Log</h3>
+            <span id="logTurnCounter" class="text-xs text-slate-400 font-semibold">Turn #1</span>
           </div>
-          <div id="gameActivityLog" class="flex-1 overflow-y-auto space-y-1.5 pr-1 text-xs">
-            <!-- Populated by JS -->
-          </div>
+          <div id="gameActivityLog" class="flex-1 overflow-y-auto space-y-1.5 pr-1 text-xs"></div>
         </div>
       </div>
 
@@ -333,141 +276,107 @@
   </main>
 
   <!-- MODAL 1: PLAYER-TO-PLAYER TRADE HUB MODAL -->
-  <div id="modalTradeHub" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-3xl w-full p-5 shadow-2xl max-h-[90vh] flex flex-col">
-      <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-        <div class="flex items-center gap-2.5">
-          <div class="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
-            <i class="fa-solid fa-handshake text-lg"></i>
-          </div>
-          <div>
-            <h3 class="text-lg font-display font-extrabold text-white">COPYPOLY Trade Syndicate</h3>
-            <p class="text-xs text-slate-400">Propose a real-time swap of Properties, Cash, and Slammer Passes with any player</p>
-          </div>
+  <div id="modalTradeHub" class="fixed inset-0 z-50 hidden bg-black/75 flex items-center justify-center p-4">
+    <div class="bg-slate-800 border border-slate-600 rounded-xl max-w-3xl w-full p-5 shadow-2xl max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between border-b border-slate-700 pb-3 mb-4">
+        <div>
+          <h3 class="text-lg font-bold text-white">Trade Properties & Cash</h3>
+          <p class="text-xs text-slate-300">Select items from both players to propose a trade.</p>
         </div>
-        <button id="btnCloseTradeModal" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white">
+        <button id="btnCloseTradeModal" class="w-8 h-8 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 overflow-y-auto pr-1">
-        <!-- Left Side: Proposer -->
-        <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
+        <div class="bg-slate-900 border border-slate-700 rounded-lg p-4 space-y-3">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-bold uppercase tracking-wider text-emerald-400">You Offer</span>
-            <select id="selectTradeFromPlayer" class="text-xs bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-white font-semibold"></select>
+            <span class="text-xs font-bold uppercase text-emerald-400">Player 1 Offers</span>
+            <select id="selectTradeFromPlayer" class="text-xs bg-slate-800 border border-slate-600 rounded px-2.5 py-1 text-white font-semibold"></select>
           </div>
-
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Cash to Include ($0 - <span id="tradeFromMaxCash">$0</span>)</label>
-            <div class="flex items-center gap-2">
-              <span class="text-emerald-400 font-mono-num font-bold">$</span>
-              <input id="inputTradeOfferCash" type="number" min="0" value="0"
-                class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm font-mono-num text-white outline-none focus:border-emerald-400" />
-            </div>
+            <label class="block text-xs text-slate-300 mb-1">Cash (Max: <span id="tradeFromMaxCash">$0</span>)</label>
+            <input id="inputTradeOfferCash" type="number" min="0" value="0"
+              class="w-full px-3 py-1.5 bg-slate-800 border border-slate-600 rounded text-sm text-white outline-none" />
           </div>
-
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Get Out of Slammer Free Cards (<span id="tradeFromMaxCards">0</span> available)</label>
+            <label class="block text-xs text-slate-300 mb-1">Get Out of Jail Cards (<span id="tradeFromMaxCards">0</span>)</label>
             <input id="inputTradeOfferCards" type="number" min="0" value="0"
-              class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono-num text-white outline-none" />
+              class="w-full px-3 py-1.5 bg-slate-800 border border-slate-600 rounded text-xs text-white outline-none" />
           </div>
-
           <div>
-            <label class="block text-xs text-slate-400 mb-1.5">Unimproved Properties to Offer</label>
-            <div id="listTradeOfferProps" class="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-              <!-- Populated by JS -->
-            </div>
+            <label class="block text-xs text-slate-300 mb-1.5">Properties to Offer</label>
+            <div id="listTradeOfferProps" class="space-y-1.5 max-h-44 overflow-y-auto pr-1"></div>
           </div>
         </div>
 
-        <!-- Right Side: Target Partner -->
-        <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
+        <div class="bg-slate-900 border border-slate-700 rounded-lg p-4 space-y-3">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-bold uppercase tracking-wider text-cyan-400">You Request From</span>
-            <select id="selectTradeToPlayer" class="text-xs bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-white font-semibold"></select>
+            <span class="text-xs font-bold uppercase text-sky-400">Player 2 Gives</span>
+            <select id="selectTradeToPlayer" class="text-xs bg-slate-800 border border-slate-600 rounded px-2.5 py-1 text-white font-semibold"></select>
           </div>
-
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Cash Requested ($0 - <span id="tradeToMaxCash">$0</span>)</label>
-            <div class="flex items-center gap-2">
-              <span class="text-cyan-400 font-mono-num font-bold">$</span>
-              <input id="inputTradeRequestCash" type="number" min="0" value="0"
-                class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm font-mono-num text-white outline-none focus:border-cyan-400" />
-            </div>
+            <label class="block text-xs text-slate-300 mb-1">Cash (Max: <span id="tradeToMaxCash">$0</span>)</label>
+            <input id="inputTradeRequestCash" type="number" min="0" value="0"
+              class="w-full px-3 py-1.5 bg-slate-800 border border-slate-600 rounded text-sm text-white outline-none" />
           </div>
-
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Get Out of Slammer Free Cards (<span id="tradeToMaxCards">0</span> available)</label>
+            <label class="block text-xs text-slate-300 mb-1">Get Out of Jail Cards (<span id="tradeToMaxCards">0</span>)</label>
             <input id="inputTradeRequestCards" type="number" min="0" value="0"
-              class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono-num text-white outline-none" />
+              class="w-full px-3 py-1.5 bg-slate-800 border border-slate-600 rounded text-xs text-white outline-none" />
           </div>
-
           <div>
-            <label class="block text-xs text-slate-400 mb-1.5">Unimproved Properties Requested</label>
-            <div id="listTradeRequestProps" class="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-              <!-- Populated by JS -->
-            </div>
+            <label class="block text-xs text-slate-300 mb-1.5">Properties Requested</label>
+            <div id="listTradeRequestProps" class="space-y-1.5 max-h-44 overflow-y-auto pr-1"></div>
           </div>
         </div>
       </div>
 
-      <div id="tradeModalError" class="hidden text-xs text-rose-400 bg-rose-500/10 border border-rose-500/30 rounded-xl px-3 py-2 mt-3"></div>
+      <div id="tradeModalError" class="hidden text-xs text-red-300 bg-red-900/40 border border-red-500/40 rounded px-3 py-2 mt-3"></div>
 
-      <div class="flex items-center justify-end gap-3 border-t border-slate-800 pt-4 mt-4">
-        <button id="btnCancelTradeModal" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300">Cancel</button>
-        <button id="btnSubmitTradeProposal" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-display font-extrabold text-xs shadow-lg shadow-amber-500/20">
-          <i class="fa-solid fa-paper-plane mr-1"></i> Send Trade Offer
+      <div class="flex items-center justify-end gap-3 border-t border-slate-700 pt-4 mt-4">
+        <button id="btnCancelTradeModal" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs font-bold text-slate-200">Cancel</button>
+        <button id="btnSubmitTradeProposal" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow">
+          Send Trade Offer
         </button>
       </div>
     </div>
   </div>
 
-  <!-- MODAL 2: INCOMING / ACTIVE TRADE REVIEW MODAL -->
-  <div id="modalIncomingTrade" class="fixed inset-0 z-50 hidden bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-slate-900 border-2 border-amber-500/50 rounded-2xl max-w-xl w-full p-5 shadow-2xl space-y-4">
-      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-        <div class="flex items-center gap-2.5">
-          <span class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-lg">🤝</span>
-          <div>
-            <h3 class="text-base font-display font-extrabold text-white">Live Trade Proposal</h3>
-            <p id="incomingTradeSubtitle" class="text-xs text-amber-300"></p>
-          </div>
-        </div>
+  <!-- MODAL 2: INCOMING TRADE REVIEW -->
+  <div id="modalIncomingTrade" class="fixed inset-0 z-50 hidden bg-black/75 flex items-center justify-center p-4">
+    <div class="bg-slate-800 border-2 border-amber-500 rounded-xl max-w-xl w-full p-5 shadow-2xl space-y-4">
+      <div class="border-b border-slate-700 pb-3">
+        <h3 class="text-base font-bold text-white">Trade Proposal</h3>
+        <p id="incomingTradeSubtitle" class="text-xs text-amber-300 font-semibold"></p>
       </div>
-      <div id="incomingTradeBody" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <!-- Populated by JS -->
-      </div>
-      <div id="incomingTradeActions" class="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
-        <!-- Accept / Decline buttons populated by JS -->
-      </div>
+      <div id="incomingTradeBody" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+      <div id="incomingTradeActions" class="flex items-center justify-end gap-3 pt-2 border-t border-slate-700"></div>
     </div>
   </div>
 
-  <!-- MODAL 3: QUICK PROPERTY AUCTION MODAL -->
-  <div id="modalAuction" class="fixed inset-0 z-50 hidden bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-slate-900 border-2 border-cyan-500/50 rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4">
-      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+  <!-- MODAL 3: PROPERTY AUCTION -->
+  <div id="modalAuction" class="fixed inset-0 z-50 hidden bg-black/75 flex items-center justify-center p-4">
+    <div class="bg-slate-800 border-2 border-emerald-500 rounded-xl max-w-lg w-full p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-700 pb-3">
         <div>
-          <span class="text-[10px] font-mono-num uppercase px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300">Open Floor Auction</span>
-          <h3 id="auctionTileName" class="text-xl font-display font-extrabold text-white mt-1"></h3>
+          <span class="text-xs uppercase font-bold text-emerald-400">Property Auction</span>
+          <h3 id="auctionTileName" class="text-lg font-bold text-white mt-0.5"></h3>
         </div>
         <div class="text-right">
-          <div class="text-xs text-slate-400">Current High Bid</div>
-          <div id="auctionHighBid" class="text-2xl font-mono-num font-extrabold text-emerald-400">$10</div>
-          <div id="auctionHighBidder" class="text-xs text-cyan-300"></div>
+          <div class="text-xs text-slate-400">High Bid</div>
+          <div id="auctionHighBid" class="text-2xl font-extrabold text-emerald-400">$10</div>
+          <div id="auctionHighBidder" class="text-xs text-slate-200"></div>
         </div>
       </div>
       <div>
-        <label class="block text-xs font-bold text-slate-400 mb-2">Select Bidding Player & Raise Bid</label>
-        <div id="auctionBiddersList" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
-          <!-- Populated by JS -->
-        </div>
+        <label class="block text-xs font-bold text-slate-300 mb-2">Place Bid</label>
+        <div id="auctionBiddersList" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto"></div>
       </div>
-      <div class="flex items-center justify-between pt-3 border-t border-slate-800">
-        <span class="text-xs text-slate-400">Anyone with enough cash can jump in!</span>
-        <button id="btnFinalizeAuction" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 font-display font-extrabold text-xs shadow-lg">
-          <i class="fa-solid fa-gavel mr-1"></i> Hammer Down & Award Property
+      <div class="flex items-center justify-between pt-3 border-t border-slate-700">
+        <span class="text-xs text-slate-400">Highest bidder wins the deed.</span>
+        <button id="btnFinalizeAuction" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow">
+          Sold! Award Property
         </button>
       </div>
     </div>
@@ -476,7 +385,6 @@
   <!-- TOAST NOTIFICATION BANNER -->
   <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-  <!-- External script link. Must keep type="module" -->
   <script type="module" src="script.js"></script>
 </body>
 </html>

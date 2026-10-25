@@ -1,21 +1,34 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // ============================================================================
-// 1. EXACT 40-TILE COPYPOLY BOARD DEFINITION
+// 0. PASTE YOUR FIREBASE CONFIG KEYS HERE
+// ============================================================================
+const MY_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCldKp2jJARkLGojexuUZGoARMt4-QrL20",
+  authDomain: "copypoly-47ef9.firebaseapp.com",
+  projectId: "copypoly-47ef9",
+  storageBucket: "copypoly-47ef9.firebasestorage.app",
+  messagingSenderId: "36147138911",
+  appId: "1:36147138911:web:0c703611175d45559ea6ea",
+  measurementId: "G-ZE6WF1L3DC"
+};
+
+// ============================================================================
+// 1. CLASSIC 40-TILE MONOPOLY BOARD DEFINITION
 // ============================================================================
 const GROUP_COLORS = {
-  brown:     { hex: '#92400e', label: 'Brown Sector',     text: '#fbbf24', size: 2 },
-  lightblue: { hex: '#38bdf8', label: 'Sky Sector',       text: '#38bdf8', size: 3 },
-  pink:      { hex: '#ec4899', label: 'Neon Pink Sector', text: '#f472b6', size: 3 },
-  orange:    { hex: '#f97316', label: 'Amber Sector',     text: '#fb923c', size: 3 },
-  red:       { hex: '#ef4444', label: 'Crimson Sector',   text: '#f87171', size: 3 },
-  yellow:    { hex: '#eab308', label: 'Solar Sector',     text: '#facc15', size: 3 },
-  green:     { hex: '#10b981', label: 'Emerald Sector',   text: '#34d399', size: 3 },
-  darkblue:  { hex: '#6366f1', label: 'Citadel Sector',   text: '#818cf8', size: 2 },
-  transit:   { hex: '#64748b', label: 'Transit Network',  text: '#cbd5e1', size: 4 },
-  utility:   { hex: '#06b6d4', label: 'Grid Utility',     text: '#67e8f9', size: 2 }
+  brown:     { hex: '#8B4513', label: 'Brown Group',      text: '#ffffff', size: 2 },
+  lightblue: { hex: '#7ec8e3', label: 'Light Blue Group', text: '#111827', size: 3 },
+  pink:      { hex: '#d93870', label: 'Pink Group',       text: '#ffffff', size: 3 },
+  orange:    { hex: '#f7941d', label: 'Orange Group',     text: '#111827', size: 3 },
+  red:       { hex: '#ed1b24', label: 'Red Group',        text: '#ffffff', size: 3 },
+  yellow:    { hex: '#fef200', label: 'Yellow Group',     text: '#111827', size: 3 },
+  green:     { hex: '#1fb25a', label: 'Green Group',      text: '#ffffff', size: 3 },
+  darkblue:  { hex: '#0072bb', label: 'Dark Blue Group',  text: '#ffffff', size: 2 },
+  transit:   { hex: '#334155', label: 'Railroads',        text: '#ffffff', size: 4 },
+  utility:   { hex: '#64748b', label: 'Utilities',        text: '#ffffff', size: 2 }
 };
 
 const BOARD_TILES = [
@@ -24,89 +37,87 @@ const BOARD_TILES = [
   { id: 2,  name: 'Karma Vault',           type: 'chest',   price: 0,   icon: '📦' },
   { id: 3,  name: 'Cobble Lane',           type: 'prop',    group: 'brown',     price: 60,  houseCost: 50,  rent: [4, 20, 60, 180, 320, 450] },
   { id: 4,  name: 'Income Audit Tax',      type: 'tax',     price: 200, icon: '💸', sub: 'Pay $200' },
-  { id: 5,  name: 'North Metro Line',      type: 'transit', group: 'transit',   price: 200, icon: '🚝', rent: [25, 50, 100, 200] },
+  { id: 5,  name: 'North Metro Line',      type: 'transit', group: 'transit',   price: 200, icon: '🚂', rent: [25, 50, 100, 200] },
   { id: 6,  name: 'Breeze Avenue',         type: 'prop',    group: 'lightblue', price: 100, houseCost: 50,  rent: [6, 30, 90, 270, 400, 550] },
-  { id: 7,  name: 'Plot Twist',            type: 'chance',  price: 0,   icon: '⚡' },
+  { id: 7,  name: 'Plot Twist',            type: 'chance',  price: 0,   icon: '❓' },
   { id: 8,  name: 'Cloud Nine Rd',         type: 'prop',    group: 'lightblue', price: 100, houseCost: 50,  rent: [6, 30, 90, 270, 400, 550] },
   { id: 9,  name: 'Skyline Terrace',       type: 'prop',    group: 'lightblue', price: 120, houseCost: 50,  rent: [8, 40, 100, 300, 450, 600] },
-  { id: 10, name: 'THE SLAMMER',           type: 'jail',    price: 0,   icon: '⛓️', sub: 'Visiting / Incarcerated' },
+  { id: 10, name: 'THE SLAMMER',           type: 'jail',    price: 0,   icon: '⛓️', sub: 'Just Visiting / In Jail' },
   { id: 11, name: 'Neon Plaza',            type: 'prop',    group: 'pink',      price: 140, houseCost: 100, rent: [10, 50, 150, 450, 625, 750] },
-  { id: 12, name: 'GigaWatt Electric Co.', type: 'utility', group: 'utility',   price: 150, icon: '⚡' },
+  { id: 12, name: 'GigaWatt Electric Co.', type: 'utility', group: 'utility',   price: 150, icon: '💡' },
   { id: 13, name: 'Velvet Arcade',         type: 'prop',    group: 'pink',      price: 140, houseCost: 100, rent: [10, 50, 150, 450, 625, 750] },
   { id: 14, name: 'Flamingo Blvd',         type: 'prop',    group: 'pink',      price: 160, houseCost: 100, rent: [12, 60, 180, 500, 700, 900] },
-  { id: 15, name: 'East Hyperloop',        type: 'transit', group: 'transit',   price: 200, icon: '🚝', rent: [25, 50, 100, 200] },
+  { id: 15, name: 'East Hyperloop',        type: 'transit', group: 'transit',   price: 200, icon: '🚂', rent: [25, 50, 100, 200] },
   { id: 16, name: 'Amber Way',             type: 'prop',    group: 'orange',    price: 180, houseCost: 100, rent: [14, 70, 200, 550, 750, 950] },
   { id: 17, name: 'Karma Vault',           type: 'chest',   price: 0,   icon: '📦' },
   { id: 18, name: 'Tangerine Drive',       type: 'prop',    group: 'orange',    price: 180, houseCost: 100, rent: [14, 70, 200, 550, 750, 950] },
   { id: 19, name: 'Sunburst Square',       type: 'prop',    group: 'orange',    price: 200, houseCost: 100, rent: [16, 80, 220, 600, 800, 1000] },
-  { id: 20, name: 'FREE LOUNGE',           type: 'parking', price: 0,   icon: '🌴', sub: 'Chill Zone' },
+  { id: 20, name: 'FREE LOUNGE',           type: 'parking', price: 0,   icon: '🚗', sub: 'Free Parking' },
   { id: 21, name: 'Crimson Strand',        type: 'prop',    group: 'red',       price: 220, houseCost: 150, rent: [18, 90, 250, 700, 875, 1050] },
-  { id: 22, name: 'Plot Twist',            type: 'chance',  price: 0,   icon: '⚡' },
+  { id: 22, name: 'Plot Twist',            type: 'chance',  price: 0,   icon: '❓' },
   { id: 23, name: 'Scarlet Cross',         type: 'prop',    group: 'red',       price: 220, houseCost: 150, rent: [18, 90, 250, 700, 875, 1050] },
   { id: 24, name: 'Ruby Heights',          type: 'prop',    group: 'red',       price: 240, houseCost: 150, rent: [20, 100, 300, 750, 925, 1100] },
-  { id: 25, name: 'South Monorail',        type: 'transit', group: 'transit',   price: 200, icon: '🚝', rent: [25, 50, 100, 200] },
+  { id: 25, name: 'South Monorail',        type: 'transit', group: 'transit',   price: 200, icon: '🚂', rent: [25, 50, 100, 200] },
   { id: 26, name: 'Lemon Drop St',         type: 'prop',    group: 'yellow',    price: 260, houseCost: 150, rent: [22, 110, 330, 800, 975, 1150] },
   { id: 27, name: 'Gold Rush Ave',         type: 'prop',    group: 'yellow',    price: 260, houseCost: 150, rent: [22, 110, 330, 800, 975, 1150] },
-  { id: 28, name: 'HydroFlow Water Works', type: 'utility', group: 'utility',   price: 150, icon: '💧' },
+  { id: 28, name: 'HydroFlow Water Works', type: 'utility', group: 'utility',   price: 150, icon: '🚰' },
   { id: 29, name: 'Sovereign Gardens',     type: 'prop',    group: 'yellow',    price: 280, houseCost: 150, rent: [24, 120, 360, 850, 1025, 1200] },
-  { id: 30, name: 'BUSTED!',               type: 'gotojail',price: 0,   icon: '🚨', sub: 'Go To Slammer' },
+  { id: 30, name: 'BUSTED!',               type: 'gotojail',price: 0,   icon: '🚓', sub: 'Go To Jail' },
   { id: 31, name: 'Emerald Park',          type: 'prop',    group: 'green',     price: 300, houseCost: 200, rent: [26, 130, 390, 900, 1100, 1275] },
   { id: 32, name: 'Jade Vista',            type: 'prop',    group: 'green',     price: 300, houseCost: 200, rent: [26, 130, 390, 900, 1100, 1275] },
   { id: 33, name: 'Karma Vault',           type: 'chest',   price: 0,   icon: '📦' },
   { id: 34, name: 'Forest Canopy Blvd',    type: 'prop',    group: 'green',     price: 320, houseCost: 200, rent: [28, 150, 450, 1000, 1200, 1400] },
-  { id: 35, name: 'West Maglev Station',   type: 'transit', group: 'transit',   price: 200, icon: '🚝', rent: [25, 50, 100, 200] },
-  { id: 36, name: 'Plot Twist',            type: 'chance',  price: 0,   icon: '⚡' },
+  { id: 35, name: 'West Maglev Station',   type: 'transit', group: 'transit',   price: 200, icon: '🚂', rent: [25, 50, 100, 200] },
+  { id: 36, name: 'Plot Twist',            type: 'chance',  price: 0,   icon: '❓' },
   { id: 37, name: 'Sapphire Promenade',    type: 'prop',    group: 'darkblue',  price: 350, houseCost: 200, rent: [35, 175, 500, 1100, 1300, 1500] },
-  { id: 38, name: 'Luxury Tariff',         type: 'tax',     price: 100, icon: '💎', sub: 'Pay $100' },
+  { id: 38, name: 'Luxury Tariff',         type: 'tax',     price: 100, icon: '💍', sub: 'Pay $100' },
   { id: 39, name: 'Apex Citadel',          type: 'prop',    group: 'darkblue',  price: 400, houseCost: 200, rent: [50, 200, 600, 1400, 1700, 2000] }
 ];
 
-// 8 Distinct Tokens & High-Contrast Colors
 const PLAYER_TOKENS = [
-  { id: 'boot',    name: 'Cyber Boot',    emoji: '🥾', color: '#ef4444' },
-  { id: 'duck',    name: 'Golden Duck',   emoji: '🦆', color: '#f59e0b' },
-  { id: 'mug',     name: 'Espresso Mug',  emoji: '☕', color: '#10b981' },
-  { id: 'cart',    name: 'Turbo Cart',    emoji: '🏎️', color: '#3b82f6' },
-  { id: 'hat',     name: 'Top Hat',       emoji: '🎩', color: '#a855f7' },
-  { id: 'rocket',  name: 'Neon Rocket',   emoji: '🚀', color: '#ec4899' },
-  { id: 'floppy',  name: 'Floppy Disk',   emoji: '💾', color: '#06b6d4' },
-  { id: 'cruiser', name: 'Retro Cruiser', emoji: '🛸', color: '#84cc16' }
+  { id: 'boot',    name: 'Boot',    emoji: '🥾', color: '#ef4444' },
+  { id: 'duck',    name: 'Duck',    emoji: '🦆', color: '#f59e0b' },
+  { id: 'mug',     name: 'Mug',     emoji: '☕', color: '#10b981' },
+  { id: 'cart',    name: 'Racecar', emoji: '🏎️', color: '#3b82f6' },
+  { id: 'hat',     name: 'Top Hat', emoji: '🎩', color: '#a855f7' },
+  { id: 'rocket',  name: 'Ship',    emoji: '🚢', color: '#ec4899' },
+  { id: 'floppy',  name: 'Dog',     emoji: '🐕', color: '#06b6d4' },
+  { id: 'cruiser', name: 'Cat',     emoji: '🐈', color: '#84cc16' }
 ];
 
-// Plot Twist (Chance) & Karma Vault (Community Chest) Decks
 const PLOT_TWIST_CARDS = [
-  { title: 'Warp to Start Line!', desc: 'Advance to START LINE (Collect $200).', action: 'move', target: 0 },
-  { title: 'Citadel Penthouse Tour', desc: 'Advance directly to Apex Citadel.', action: 'move', target: 39 },
-  { title: 'Ruby Rooftop Party', desc: 'Advance to Ruby Heights. Collect $200 if you pass Start Line.', action: 'move', target: 24 },
-  { title: 'Catch the North Metro', desc: 'Take a ride to North Metro Line. Collect $200 if you pass Start Line.', action: 'move', target: 5 },
-  { title: 'Neon Plaza VIP Pass', desc: 'Advance to Neon Plaza. Collect $200 if you pass Start Line.', action: 'move', target: 11 },
-  { title: 'Venture Capital Dividend', desc: 'The Syndicate pays you a dividend of $50.', action: 'cash', amount: 50 },
-  { title: 'Series A Funding Closed!', desc: 'Your startup loan matures. Collect $150.', action: 'cash', amount: 150 },
-  { title: 'Slammer Override Key', desc: 'Get Out of The Slammer Free. Keep this card or trade it!', action: 'jailcard' },
-  { title: 'Busted by Cyber Patrol!', desc: 'Go directly to The Slammer. Do not pass Start Line, do not collect $200.', action: 'gotojail' },
-  { title: 'Chairman of the Syndicate', desc: 'You have been elected Chairman! Pay each active player $50.', action: 'payeach', amount: 50 },
-  { title: 'Smart Grid Upgrade Levy', desc: 'Make general repairs on all your properties: Pay $25 per House and $100 per Mega-Hotel.', action: 'repairs', house: 25, hotel: 100 },
-  { title: 'Speeding in the Hyperlane', desc: 'Pay a traffic fine of $15.', action: 'cash', amount: -15 },
-  { title: 'Glitch in the Matrix', desc: 'Go back 3 spaces!', action: 'moveback', steps: 3 }
+  { title: 'Advance to Start Line', desc: 'Advance to START LINE (Collect $200).', action: 'move', target: 0 },
+  { title: 'Walk to Apex Citadel', desc: 'Advance directly to Apex Citadel.', action: 'move', target: 39 },
+  { title: 'Advance to Ruby Heights', desc: 'Advance to Ruby Heights. Collect $200 if you pass Start Line.', action: 'move', target: 24 },
+  { title: 'Take a Trip on North Metro', desc: 'Advance to North Metro Line. Collect $200 if you pass Start Line.', action: 'move', target: 5 },
+  { title: 'Advance to Neon Plaza', desc: 'Advance to Neon Plaza. Collect $200 if you pass Start Line.', action: 'move', target: 11 },
+  { title: 'Bank Dividend', desc: 'Bank pays you a dividend of $50.', action: 'cash', amount: 50 },
+  { title: 'Building Loan Matures', desc: 'Your building loan matures. Collect $150.', action: 'cash', amount: 150 },
+  { title: 'Get Out of Jail Free', desc: 'Get Out of The Slammer Free. Keep this card or trade it!', action: 'jailcard' },
+  { title: 'Go to Jail', desc: 'Go directly to The Slammer. Do not pass Start Line, do not collect $200.', action: 'gotojail' },
+  { title: 'Chairman of the Board', desc: 'You have been elected Chairman! Pay each player $50.', action: 'payeach', amount: 50 },
+  { title: 'General Property Repairs', desc: 'Make general repairs on all your properties: Pay $25 per House and $100 per Hotel.', action: 'repairs', house: 25, hotel: 100 },
+  { title: 'Speeding Fine', desc: 'Pay a speeding fine of $15.', action: 'cash', amount: -15 },
+  { title: 'Go Back 3 Spaces', desc: 'Move back 3 spaces!', action: 'moveback', steps: 3 }
 ];
 
 const KARMA_VAULT_CARDS = [
-  { title: 'Full Sprint to Start Line', desc: 'Advance to START LINE (Collect $200).', action: 'move', target: 0 },
-  { title: 'Server Bank Error in Your Favor', desc: 'Collect $200 from the bank!', action: 'cash', amount: 200 },
-  { title: 'Cybernetic Clinic Bill', desc: 'Pay medical upgrade fee of $50.', action: 'cash', amount: -50 },
-  { title: 'Liquidated NFT Collection', desc: 'From sale of digital stock, you get $50.', action: 'cash', amount: 50 },
-  { title: 'Slammer Bailout Pass', desc: 'Get Out of The Slammer Free. Keep or trade with other players!', action: 'jailcard' },
-  { title: 'Caught Mining on Mainframe!', desc: 'Go directly to The Slammer. Do not pass Start Line.', action: 'gotojail' },
-  { title: 'It Is Your Launch Day!', desc: 'Collect $20 from every active player in the room!', action: 'collecteach', amount: 20 },
-  { title: 'Tax Overpayment Refund', desc: 'Income tax audit rebounds in your favor. Collect $20.', action: 'cash', amount: 20 },
-  { title: 'Bug Bounty Reward', desc: 'You won 2nd prize in a hackathon! Collect $10.', action: 'cash', amount: 10 },
-  { title: 'Angel Investor Inheritance', desc: 'You inherit $100 in cold hard cash.', action: 'cash', amount: 100 },
-  { title: 'Hospitality Consulting Fee', desc: 'Receive $25 consultancy fee.', action: 'cash', amount: 25 },
-  { title: 'Infrastructure Assessment', desc: 'You are assessed for street upgrades: $40 per House, $115 per Mega-Hotel.', action: 'repairs', house: 40, hotel: 115 }
+  { title: 'Advance to Start Line', desc: 'Advance to START LINE (Collect $200).', action: 'move', target: 0 },
+  { title: 'Bank Error in Your Favor', desc: 'Collect $200 from the bank!', action: 'cash', amount: 200 },
+  { title: 'Doctor Fee', desc: 'Pay medical fee of $50.', action: 'cash', amount: -50 },
+  { title: 'Sale of Stock', desc: 'From sale of stock, you get $50.', action: 'cash', amount: 50 },
+  { title: 'Get Out of Jail Free', desc: 'Get Out of The Slammer Free. Keep or trade with other players!', action: 'jailcard' },
+  { title: 'Go to Jail', desc: 'Go directly to The Slammer. Do not pass Start Line.', action: 'gotojail' },
+  { title: 'It Is Your Birthday!', desc: 'Collect $20 from every active player!', action: 'collecteach', amount: 20 },
+  { title: 'Income Tax Refund', desc: 'Collect $20 tax refund.', action: 'cash', amount: 20 },
+  { title: 'Second Prize in Contest', desc: 'Collect $10 prize money.', action: 'cash', amount: 10 },
+  { title: 'Inheritance', desc: 'You inherit $100.', action: 'cash', amount: 100 },
+  { title: 'Consultancy Fee', desc: 'Receive $25 consultancy fee.', action: 'cash', amount: 25 },
+  { title: 'Street Repairs', desc: 'Assessed for street repairs: $40 per House, $115 per Hotel.', action: 'repairs', house: 40, hotel: 115 }
 ];
 
 // ============================================================================
-// 2. SOUND SYNTHESIZER (Web Audio API - No External Assets Needed)
+// 2. SOUND SYNTHESIZER & TOASTS
 // ============================================================================
 let soundEnabled = true;
 let audioCtx = null;
@@ -125,145 +136,172 @@ function playSfx(type) {
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(220, now);
       osc.frequency.exponentialRampToValueAtTime(680, now + 0.09);
-      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.setValueAtTime(0.12, now);
       gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
       osc.start(now);
       osc.stop(now + 0.1);
-    } else if (type === 'cash') {
+    } else if (type === 'cash' || type === 'buy' || type === 'trade') {
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, now);
-      osc.frequency.setValueAtTime(880, now + 0.07);
-      gain.gain.setValueAtTime(0.16, now);
+      osc.frequency.setValueAtTime(523.25, now);
+      osc.frequency.setValueAtTime(659.25, now + 0.08);
+      gain.gain.setValueAtTime(0.14, now);
       gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
       osc.start(now);
       osc.stop(now + 0.25);
-    } else if (type === 'buy') {
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(440, now);
-      osc.frequency.setValueAtTime(554.37, now + 0.08);
-      osc.frequency.setValueAtTime(659.25, now + 0.16);
-      gain.gain.setValueAtTime(0.18, now);
+    } else if (type === 'jail') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(260, now);
+      osc.frequency.linearRampToValueAtTime(130, now + 0.3);
+      gain.gain.setValueAtTime(0.12, now);
       gain.gain.exponentialRampToValueAtTime(0.01, now + 0.32);
       osc.start(now);
       osc.stop(now + 0.32);
-    } else if (type === 'jail') {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(300, now);
-      osc.frequency.linearRampToValueAtTime(140, now + 0.35);
-      gain.gain.setValueAtTime(0.15, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.36);
-      osc.start(now);
-      osc.stop(now + 0.36);
-    } else if (type === 'trade') {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(523.25, now);
-      osc.frequency.setValueAtTime(659.25, now + 0.09);
-      osc.frequency.setValueAtTime(783.99, now + 0.18);
-      gain.gain.setValueAtTime(0.16, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-      osc.start(now);
-      osc.stop(now + 0.35);
     }
-  } catch (e) {
-    // Ignore audio context restrictions
-  }
+  } catch (e) {}
 }
 
 function showToast(msg, variant = 'emerald') {
   const container = document.getElementById('toastContainer');
   const colors = {
-    emerald: 'bg-emerald-950/95 border-emerald-500/50 text-emerald-200',
-    cyan:    'bg-cyan-950/95 border-cyan-500/50 text-cyan-200',
-    amber:   'bg-amber-950/95 border-amber-500/50 text-amber-200',
-    rose:    'bg-rose-950/95 border-rose-500/50 text-rose-200'
+    emerald: 'bg-emerald-900 border-emerald-500 text-emerald-100',
+    cyan:    'bg-sky-900 border-sky-500 text-sky-100',
+    amber:   'bg-amber-900 border-amber-500 text-amber-100',
+    rose:    'bg-red-900 border-red-500 text-red-100'
   };
   const el = document.createElement('div');
-  el.className = `px-4 py-2.5 rounded-xl border shadow-xl text-xs font-semibold backdrop-blur-md transition-all duration-300 ${colors[variant] || colors.emerald}`;
+  el.className = `px-4 py-2.5 rounded-lg border shadow-lg text-xs font-semibold transition-all duration-300 ${colors[variant] || colors.emerald}`;
   el.innerHTML = msg;
   container.appendChild(el);
   setTimeout(() => {
     el.style.opacity = '0';
     setTimeout(() => el.remove(), 300);
-  }, 3600);
+  }, 4000);
 }
 
 // ============================================================================
-// 3. STATE & CLOUD DATABASE INITIALIZATION (FOLLOWING STRICT FIRESTORE RULES)
+// 3. DATABASE CONNECTION & TOP-RIGHT STATUS INDICATOR
 // ============================================================================
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'copypoly-vibe-app';
 let db = null;
 let auth = null;
 let currentUser = null;
 let isCloudConnected = false;
+let dbDiagnosticMessage = "Checking database connection...";
 
-// Application In-Memory Mirrors
-let myAccount = null; // { uid, username, displayName, token, pin }
-let registeredUsersMap = {}; // username_lower -> userObj
-let allRoomsMap = {}; // roomId -> roomObj
-let allInvitesMap = {}; // inviteId -> inviteObj
+let myAccount = null;
+let registeredUsersMap = {};
+let allRoomsMap = {};
+let allInvitesMap = {};
 let currentRoomId = null;
-let selectedInspectTileId = 39; // Default inspect Apex Citadel
+let selectedInspectTileId = 39;
 let selectedPortfolioPlayerId = null;
-let authMode = 'register'; // 'register' | 'login'
+let authMode = 'register';
 let selectedAuthToken = PLAYER_TOKENS[0].id;
 let isRollingAnim = false;
 
-// Collection Helpers (RULE 1: Strict Paths)
+function updateDbIndicator(status, labelText, diagnosticDetail) {
+  const dot = document.getElementById('dbStatusDot');
+  const txt = document.getElementById('dbStatusText');
+  dbDiagnosticMessage = diagnosticDetail || labelText;
+  if (!dot || !txt) return;
+
+  if (status === 'connected') {
+    dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+    txt.textContent = labelText || 'DB Connected';
+    txt.className = 'text-emerald-400 font-bold';
+  } else if (status === 'connecting') {
+    dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse';
+    txt.textContent = labelText || 'Connecting...';
+    txt.className = 'text-amber-300';
+  } else {
+    dot.className = 'w-2.5 h-2.5 rounded-full bg-red-500';
+    txt.textContent = labelText || 'Local Mode (Offline)';
+    txt.className = 'text-red-300';
+  }
+}
+
 function colUsers()    { return collection(db, 'artifacts', appId, 'public', 'data', 'copypoly_users'); }
 function colProfiles() { return collection(db, 'artifacts', appId, 'public', 'data', 'copypoly_profiles'); }
 function colRooms()    { return collection(db, 'artifacts', appId, 'public', 'data', 'copypoly_rooms'); }
 function colInvites()  { return collection(db, 'artifacts', appId, 'public', 'data', 'copypoly_invites'); }
 
 async function initDatabaseAndAuth() {
+  updateDbIndicator('connecting', 'Connecting DB...', 'Initializing Firebase...');
   try {
-    // 1. Paste your exact config keys from the Firebase console here:
-    const firebaseConfig = {
-        apiKey: "AIzaSyCldKp2jJARkLGojexuUZGoARMt4-QrL20",
-        authDomain: "copypoly-47ef9.firebaseapp.com",
-        projectId: "copypoly-47ef9",
-        storageBucket: "copypoly-47ef9.firebasestorage.app",
-        messagingSenderId: "36147138911",
-        appId: "1:36147138911:web:0c703611175d45559ea6ea",
-        measurementId: "G-ZE6WF1L3DC"
-    };
+    let firebaseConfig = MY_FIREBASE_CONFIG;
+    if ((!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") && typeof __firebase_config !== 'undefined' && __firebase_config) {
+      firebaseConfig = JSON.parse(__firebase_config);
+    }
 
-    // 2. Initialize Firebase with your live config
+    if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
+      currentUser = { uid: 'local-' + Math.random().toString(36).slice(2, 9) };
+      isCloudConnected = false;
+      updateDbIndicator(
+        'offline',
+        'Local Mode (No Keys)',
+        'You are running in Local Mode because MY_FIREBASE_CONFIG in script.js still has "YOUR_API_KEY". Paste your real Firebase keys at the top of script.js!'
+      );
+      return;
+    }
+
     const app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
     db = getFirestore(app);
 
-    // 3. Authenticate the user silently in the background
-    await signInAnonymously(auth);
-    
-    currentUser = auth.currentUser;
+    // Try anonymous auth if enabled, but do NOT fail if user hasn't turned on Anonymous Auth in Firebase Console
+    try {
+      auth = getAuth(app);
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+      currentUser = auth.currentUser;
+      onAuthStateChanged(auth, (u) => { if (u) currentUser = u; });
+    } catch (authErr) {
+      console.warn("Firebase Auth skipped (using Firestore Test Mode directly):", authErr.message);
+      currentUser = { uid: 'user-' + Math.random().toString(36).slice(2, 9) };
+    }
+
+    if (!currentUser) {
+      currentUser = { uid: 'user-' + Math.random().toString(36).slice(2, 9) };
+    }
+
     isCloudConnected = true;
-
-    onAuthStateChanged(auth, (u) => {
-      if (u) currentUser = u;
-    });
-
-    setupRealtimeListeners();
+    setupRealtimeListeners(firebaseConfig.projectId);
     await restoreExistingSession();
-    
   } catch (err) {
-    console.error("Database init fallback:", err);
+    console.error("Database connection error:", err);
     currentUser = { uid: 'local-' + Math.random().toString(36).slice(2, 9) };
     isCloudConnected = false;
+    updateDbIndicator('offline', 'DB Error', `Connection error: ${err.message}`);
   }
 }
 
-function setupRealtimeListeners() {
-  if (!isCloudConnected || !currentUser) return;
+function setupRealtimeListeners(projectId) {
+  if (!isCloudConnected || !db) return;
 
-  // 1. Listen to all registered @usernames
+  // 1. Listen to users collection & confirm live connection
   onSnapshot(colUsers(), (snap) => {
     const nextMap = {};
     snap.forEach((d) => { nextMap[d.id] = d.data(); });
     registeredUsersMap = nextMap;
     renderRegisteredUsersDirectory();
-  }, (err) => console.error("Users listener error:", err));
+    updateDbIndicator(
+      'connected',
+      'DB Connected',
+      `Connected to Firebase Firestore project "${projectId || 'cloud'}" (${ Object.keys(nextMap).length } registered users).`
+    );
+  }, (err) => {
+    console.error("Firestore users listener error:", err);
+    isCloudConnected = false;
+    updateDbIndicator(
+      'offline',
+      'DB Blocked / Rules',
+      `Firestore Error: ${err.message}. Make sure your Firestore Database is created and Rules are set to Test Mode!`
+    );
+  });
 
-  // 2. Listen to all COPYPOLY rooms
+  // 2. Listen to rooms
   onSnapshot(colRooms(), (snap) => {
     const nextRooms = {};
     snap.forEach((d) => {
@@ -279,7 +317,7 @@ function setupRealtimeListeners() {
     }
   }, (err) => console.error("Rooms listener error:", err));
 
-  // 3. Listen to live @username invitations
+  // 3. Listen to invites
   onSnapshot(colInvites(), (snap) => {
     const nextInvites = {};
     snap.forEach((d) => { nextInvites[d.id] = d.data(); });
@@ -318,13 +356,13 @@ async function saveRoomState(room) {
   const normalized = normalizeRoomData(room);
   allRoomsMap[normalized.id] = normalized;
 
-  if (isCloudConnected && currentUser) {
+  if (isCloudConnected && db) {
     const payload = {
       id: normalized.id,
       title: normalized.title,
       code: normalized.code,
       hostUsername: normalized.hostUsername,
-      status: normalized.status, // 'waiting' | 'playing' | 'finished'
+      status: normalized.status,
       startingCash: normalized.startingCash || 1500,
       turnIndex: normalized.turnIndex || 0,
       turnNumber: normalized.turnNumber || 1,
@@ -351,7 +389,7 @@ async function saveRoomState(room) {
 }
 
 async function restoreExistingSession() {
-  if (!isCloudConnected || !currentUser) return;
+  if (!isCloudConnected || !db || !currentUser) return;
   try {
     const profSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_profiles', currentUser.uid));
     if (profSnap.exists()) {
@@ -361,9 +399,7 @@ async function restoreExistingSession() {
         enterAuthenticatedState();
       }
     }
-  } catch (e) {
-    console.error("Restore profile error:", e);
-  }
+  } catch (e) {}
 }
 
 // ============================================================================
@@ -375,15 +411,15 @@ function renderAuthTokenPicker() {
     const active = t.id === selectedAuthToken;
     return `
       <button type="button" data-token="${t.id}"
-        class="auth-token-btn p-2 rounded-xl border flex flex-col items-center gap-1 transition ${
+        class="auth-token-btn p-2 rounded-lg border flex flex-col items-center gap-1 transition ${
           active
-            ? 'bg-slate-800 border-emerald-400 shadow-md shadow-emerald-500/20'
-            : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+            ? 'bg-slate-700 border-emerald-400 shadow'
+            : 'bg-slate-900 border-slate-700 hover:border-slate-500'
         }">
-        <span class="w-7 h-7 rounded-full flex items-center justify-center text-base" style="background:${t.color}25; border: 1.5px solid ${t.color}">
+        <span class="w-7 h-7 rounded-full flex items-center justify-center text-base" style="background:${t.color}30; border: 1.5px solid ${t.color}">
           ${t.emoji}
         </span>
-        <span class="text-[10px] font-semibold text-slate-300 truncate w-full text-center">${t.name}</span>
+        <span class="text-[11px] font-medium text-slate-200 truncate w-full text-center">${t.name}</span>
       </button>
     `;
   }).join('');
@@ -404,13 +440,13 @@ function setAuthTab(mode) {
   const fieldTok = document.getElementById('fieldTokenPicker');
 
   if (mode === 'register') {
-    tabReg.className = 'py-2 text-xs font-bold rounded-lg bg-emerald-500 text-slate-950 transition';
-    tabLog.className = 'py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition';
+    tabReg.className = 'py-2 text-xs font-bold rounded-md bg-emerald-600 text-white transition';
+    tabLog.className = 'py-2 text-xs font-bold rounded-md text-slate-400 hover:text-white transition';
     fieldDisp.classList.remove('hidden');
     fieldTok.classList.remove('hidden');
   } else {
-    tabLog.className = 'py-2 text-xs font-bold rounded-lg bg-emerald-500 text-slate-950 transition';
-    tabReg.className = 'py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition';
+    tabLog.className = 'py-2 text-xs font-bold rounded-md bg-emerald-600 text-white transition';
+    tabReg.className = 'py-2 text-xs font-bold rounded-md text-slate-400 hover:text-white transition';
     fieldDisp.classList.add('hidden');
     fieldTok.classList.add('hidden');
   }
@@ -425,7 +461,7 @@ async function handleAuthSubmit(e) {
   const errBox = document.getElementById('authErrorMsg');
 
   if (rawUsername.length < 3) {
-    errBox.textContent = 'Username must be at least 3 alphanumeric characters.';
+    errBox.textContent = 'Username must be at least 3 characters.';
     errBox.classList.remove('hidden');
     return;
   }
@@ -440,7 +476,7 @@ async function handleAuthSubmit(e) {
 
   if (authMode === 'register') {
     if (existing && existing.pin !== pin) {
-      errBox.textContent = `@${rawUsername} is already claimed! Switch to "Existing @username" tab if this is your account.`;
+      errBox.textContent = `@${rawUsername} is already taken. Switch to "Existing @username" to log in.`;
       errBox.classList.remove('hidden');
       return;
     }
@@ -455,16 +491,16 @@ async function handleAuthSubmit(e) {
     registeredUsersMap[rawUsername] = userRecord;
     myAccount = userRecord;
 
-    if (isCloudConnected && currentUser) {
+    if (isCloudConnected && db) {
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_users', rawUsername), userRecord);
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_profiles', currentUser.uid), userRecord);
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_profiles', userRecord.uid), userRecord);
     }
     playSfx('buy');
-    showToast(`Account @${rawUsername} ready!`, 'emerald');
+    showToast(`Signed in as @${rawUsername}`, 'emerald');
     enterAuthenticatedState();
   } else {
     if (!existing) {
-      errBox.textContent = `No account found with @${rawUsername}. Create it first!`;
+      errBox.textContent = `Account @${rawUsername} not found.`;
       errBox.classList.remove('hidden');
       return;
     }
@@ -474,7 +510,7 @@ async function handleAuthSubmit(e) {
       return;
     }
     myAccount = existing;
-    if (isCloudConnected && currentUser) {
+    if (isCloudConnected && db && currentUser) {
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_profiles', currentUser.uid), existing);
     }
     playSfx('buy');
@@ -535,7 +571,7 @@ async function handleCreateRoom(e) {
   e.preventDefault();
   if (!myAccount) return;
 
-  const title = document.getElementById('inputRoomTitle').value.trim() || `${myAccount.displayName}'s Syndicate`;
+  const title = document.getElementById('inputRoomTitle').value.trim() || `${myAccount.displayName}'s Game`;
   const startingCash = parseInt(document.getElementById('selectStartingCash').value, 10) || 1500;
   const roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
   const code = Math.random().toString(36).substring(2, 7).toUpperCase();
@@ -559,7 +595,7 @@ async function handleCreateRoom(e) {
     players: [hostSeat],
     properties: {},
     logs: [
-      { time: Date.now(), text: `Room "${title}" created by @${myAccount.username}. Waiting for up to 8 players!` }
+      { time: Date.now(), text: `Room "${title}" created by @${myAccount.username}.` }
     ],
     activeTrade: null,
     activeAuction: null,
@@ -569,7 +605,7 @@ async function handleCreateRoom(e) {
   currentRoomId = roomId;
   await saveRoomState(newRoom);
   playSfx('buy');
-  showToast(`Room "${title}" created! Invite friends via @username.`, 'emerald');
+  showToast(`Room "${title}" created!`, 'emerald');
   syncActiveRoomUI(newRoom);
 }
 
@@ -581,11 +617,11 @@ async function sendUsernameInvite(targetUsernameRaw) {
 
   if (!cleanUser) return;
   if (room.players.length >= 8) {
-    showToast('Room is already at the 8-player maximum!', 'rose');
+    showToast('Room is full (8/8 players).', 'rose');
     return;
   }
   if (room.players.some(p => p.username === cleanUser)) {
-    showToast(`@${cleanUser} is already seated in this room!`, 'amber');
+    showToast(`@${cleanUser} is already in this room.`, 'amber');
     return;
   }
 
@@ -601,15 +637,15 @@ async function sendUsernameInvite(targetUsernameRaw) {
   };
 
   allInvitesMap[inviteId] = inviteObj;
-  if (isCloudConnected && currentUser) {
+  if (isCloudConnected && db) {
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_invites', inviteId), inviteObj);
   }
 
-  feedback.textContent = `Live invitation sent to @${cleanUser}! They can accept from their Lobby Inbox.`;
+  feedback.textContent = `Invite sent to @${cleanUser}!`;
   feedback.className = 'text-xs mt-2 text-emerald-400 font-semibold';
   feedback.classList.remove('hidden');
   playSfx('cash');
-  showToast(`Invitation sent to @${cleanUser}!`, 'emerald');
+  showToast(`Invite sent to @${cleanUser}`, 'emerald');
 }
 
 async function addHotseatSimulatedPlayer() {
@@ -621,19 +657,19 @@ async function addHotseatSimulatedPlayer() {
   }
 
   const botNames = [
-    { username: 'neon_whale',   displayName: 'Neon Whale' },
-    { username: 'pixel_baron',  displayName: 'Pixel Baron' },
-    { username: 'lady_ledger',  displayName: 'Lady Ledger' },
-    { username: 'crypto_duke',  displayName: 'Crypto Duke' },
-    { username: 'synth_queen',  displayName: 'Synth Queen' },
-    { username: 'byte_mogul',   displayName: 'Byte Mogul' },
-    { username: 'alpha_shark',  displayName: 'Alpha Shark' }
+    { username: 'player_2', displayName: 'Player 2' },
+    { username: 'player_3', displayName: 'Player 3' },
+    { username: 'player_4', displayName: 'Player 4' },
+    { username: 'player_5', displayName: 'Player 5' },
+    { username: 'player_6', displayName: 'Player 6' },
+    { username: 'player_7', displayName: 'Player 7' },
+    { username: 'player_8', displayName: 'Player 8' }
   ];
 
   const usedIds = new Set(room.players.map(p => p.username));
   const pick = botNames.find(b => !usedIds.has(b.username)) || {
-    username: 'tycoon_' + (room.players.length + 1),
-    displayName: 'Tycoon #' + (room.players.length + 1)
+    username: 'guest_' + (room.players.length + 1),
+    displayName: 'Guest ' + (room.players.length + 1)
   };
 
   const seatIdx = room.players.length;
@@ -641,7 +677,7 @@ async function addHotseatSimulatedPlayer() {
   room.players.push(newSeat);
   room.logs.unshift({
     time: Date.now(),
-    text: `Seat #${seatIdx + 1} filled by @${newSeat.username} (${newSeat.displayName}).`
+    text: `Seat #${seatIdx + 1} joined: @${newSeat.username}.`
   });
 
   await saveRoomState(room);
@@ -663,16 +699,15 @@ async function joinRoomById(roomId) {
     room.players.push(newSeat);
     room.logs.unshift({
       time: Date.now(),
-      text: `@${myAccount.username} joined the room (${room.players.length}/8 players).`
+      text: `@${myAccount.username} joined the room (${room.players.length}/8).`
     });
     await saveRoomState(room);
   }
 
-  // Clean up invite if exists
   const invId = `inv_${roomId}_${myAccount.username}`;
   if (allInvitesMap[invId]) {
     delete allInvitesMap[invId];
-    if (isCloudConnected && currentUser) {
+    if (isCloudConnected && db) {
       try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_invites', invId)); } catch (e) {}
     }
   }
@@ -686,7 +721,7 @@ async function startRoomBoardGame() {
   if (!currentRoomId || !allRoomsMap[currentRoomId]) return;
   const room = allRoomsMap[currentRoomId];
   if (room.players.length < 2) {
-    showToast('Add at least 2 players (invite via @username or click "+ Add Local Seat") to start!', 'amber');
+    showToast('Add at least 2 players to start the game.', 'amber');
     return;
   }
 
@@ -696,7 +731,7 @@ async function startRoomBoardGame() {
   room.turnPhase = 'PRE_ROLL';
   room.logs.unshift({
     time: Date.now(),
-    text: `🚀 COPYPOLY Board Launched with ${room.players.length} players! @${room.players[0].username} is up first.`
+    text: `Game started with ${room.players.length} players! @${room.players[0].username} rolls first.`
   });
 
   await saveRoomState(room);
@@ -706,10 +741,10 @@ async function startRoomBoardGame() {
 function renderRegisteredUsersDirectory() {
   const container = document.getElementById('listRegisteredUsers');
   const users = Object.values(registeredUsersMap);
-  document.getElementById('badgeUserCount').textContent = `${users.length} registered`;
+  document.getElementById('badgeUserCount').textContent = `${users.length} users`;
 
   if (users.length === 0) {
-    container.innerHTML = `<span class="text-xs text-slate-500">No other @usernames registered yet.</span>`;
+    container.innerHTML = `<span class="text-xs text-slate-400">No players registered yet.</span>`;
     return;
   }
 
@@ -717,13 +752,13 @@ function renderRegisteredUsersDirectory() {
     const isMe = myAccount && u.username === myAccount.username;
     return `
       <button type="button" data-username="${u.username}"
-        class="dir-user-chip text-xs font-mono-num px-2.5 py-1 rounded-lg border transition flex items-center gap-1 ${
+        class="dir-user-chip text-xs px-2.5 py-1 rounded-md border transition flex items-center gap-1 ${
           isMe
-            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-            : 'bg-slate-950 hover:bg-slate-800 border-slate-800 text-cyan-300'
+            ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-300 font-semibold'
+            : 'bg-slate-900 hover:bg-slate-700 border-slate-700 text-slate-200'
         }">
         <span>@${u.username}</span>
-        ${isMe ? '<span class="text-[9px] uppercase text-emerald-400">(You)</span>' : '<i class="fa-solid fa-plus text-[9px] text-slate-400"></i>'}
+        ${isMe ? '<span class="text-[10px] text-emerald-400">(You)</span>' : ''}
       </button>
     `;
   }).join('');
@@ -737,7 +772,7 @@ function renderRegisteredUsersDirectory() {
       if (currentRoomId) {
         sendUsernameInvite(target);
       } else {
-        showToast(`Create a room first to invite @${target}!`, 'cyan');
+        showToast(`Create a room first to invite @${target}.`, 'cyan');
       }
     });
   });
@@ -754,21 +789,21 @@ function renderIncomingInvites() {
 
   if (myInvites.length === 0) {
     container.innerHTML = `
-      <div class="text-xs text-slate-500 bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 text-center">
-        No pending invites for <span class="text-emerald-400 font-mono-num">@${myAccount.username}</span>.
+      <div class="text-xs text-slate-400 bg-slate-900 border border-slate-700 rounded-lg p-3 text-center">
+        No pending invites for @${myAccount.username}.
       </div>
     `;
     return;
   }
 
   container.innerHTML = myInvites.map(inv => `
-    <div class="p-3 rounded-xl bg-slate-950 border border-cyan-500/40 flex items-center justify-between gap-2">
+    <div class="p-3 rounded-lg bg-slate-900 border border-emerald-500/40 flex items-center justify-between gap-2">
       <div>
         <div class="text-xs font-bold text-white">${inv.roomTitle}</div>
-        <div class="text-[11px] text-slate-400">Invited by <span class="text-emerald-400 font-mono-num">@${inv.fromUsername}</span></div>
+        <div class="text-[11px] text-slate-300">From @${inv.fromUsername}</div>
       </div>
-      <button data-room="${inv.roomId}" class="btn-accept-invite px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition">
-        Accept & Join
+      <button data-room="${inv.roomId}" class="btn-accept-invite px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition">
+        Join
       </button>
     </div>
   `).join('');
@@ -784,49 +819,33 @@ function renderLobbyViews() {
 
   if (rooms.length === 0) {
     listEl.innerHTML = `
-      <div class="text-center py-8 bg-slate-950/50 border border-slate-800/80 rounded-xl">
-        <div class="text-2xl mb-1">🎲</div>
-        <div class="text-sm font-bold text-slate-300">No rooms created yet</div>
-        <div class="text-xs text-slate-500 mt-0.5">Use the form on the left to host the first 8-player COPYPOLY room!</div>
+      <div class="text-center py-8 bg-slate-900 border border-slate-700 rounded-lg">
+        <div class="text-sm font-semibold text-slate-300">No active rooms yet</div>
+        <div class="text-xs text-slate-400 mt-1">Create a new room on the left to start playing.</div>
       </div>
     `;
   } else {
     listEl.innerHTML = rooms.map(r => {
       const isMember = myAccount && r.players.some(p => p.username === myAccount.username);
       const statusBadge = r.status === 'waiting'
-        ? `<span class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Open Lobby</span>`
-        : `<span class="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">In Progress (Turn #${r.turnNumber || 1})</span>`;
+        ? `<span class="text-[10px] px-2 py-0.5 rounded bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 font-semibold">Waiting</span>`
+        : `<span class="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">Turn #${r.turnNumber || 1}</span>`;
 
       return `
-        <div class="p-4 rounded-xl bg-slate-950/90 border border-slate-800 hover:border-slate-700 transition flex flex-wrap items-center justify-between gap-3">
+        <div class="p-3.5 rounded-lg bg-slate-900 border border-slate-700 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div class="flex items-center gap-2">
-              <span class="font-display font-bold text-sm text-white">${r.title}</span>
+              <span class="font-bold text-sm text-white">${r.title}</span>
               ${statusBadge}
-              <span class="font-mono-num text-[11px] text-slate-400">#${r.code}</span>
+              <span class="text-xs text-slate-400">#${r.code}</span>
             </div>
-            <div class="text-xs text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
-              <span>Host: <strong class="text-emerald-400 font-mono-num">@${r.hostUsername}</strong></span>
-              <span>•</span>
-              <span>Players: <strong class="text-white">${r.players.length} / 8</strong></span>
-            </div>
-            <div class="flex items-center gap-1 mt-2">
-              ${r.players.map(p => `
-                <span class="inline-flex items-center gap-1 text-[10px] font-mono-num px-2 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-slate-300">
-                  <span>${p.emoji}</span> @${p.username}
-                </span>
-              `).join('')}
+            <div class="text-xs text-slate-400 mt-1">
+              Host: <strong class="text-slate-200">@${r.hostUsername}</strong> • Players: <strong class="text-white">${r.players.length}/8</strong>
             </div>
           </div>
-          <div>
-            <button data-room="${r.id}" class="btn-join-room px-4 py-2 rounded-xl font-display font-bold text-xs transition ${
-              isMember
-                ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950'
-                : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
-            }">
-              ${isMember ? 'Resume Room' : (r.status === 'waiting' ? 'Join Room' : 'Spectate / Join')}
-            </button>
-          </div>
+          <button data-room="${r.id}" class="btn-join-room px-4 py-2 rounded-lg font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white transition">
+            ${isMember ? 'Return to Game' : 'Join Room'}
+          </button>
         </div>
       `;
     }).join('');
@@ -841,7 +860,7 @@ function renderLobbyViews() {
     const room = allRoomsMap[currentRoomId];
     stagingPanel.classList.remove('hidden');
     document.getElementById('stagingRoomTitle').textContent = room.title;
-    document.getElementById('stagingRoomCode').textContent = `CODE: ${room.code}`;
+    document.getElementById('stagingRoomCode').textContent = `ROOM CODE: ${room.code}`;
     document.getElementById('stagingSeatCounter').textContent = `${room.players.length} / 8 Players`;
 
     const slotsHtml = [];
@@ -849,27 +868,23 @@ function renderLobbyViews() {
       const p = room.players[i];
       if (p) {
         slotsHtml.push(`
-          <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+          <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-between">
             <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 rounded-full flex items-center justify-center text-base" style="background:${p.color}25; border:2px solid ${p.color}">
+              <div class="w-8 h-8 rounded-full flex items-center justify-center text-base" style="background:${p.color}30; border:2px solid ${p.color}">
                 ${p.emoji}
               </div>
               <div>
-                <div class="text-xs font-bold text-white flex items-center gap-1.5">
-                  <span>${p.displayName}</span>
-                  ${p.isSimulated ? '<span class="text-[9px] px-1.5 py-0.2 bg-indigo-500/20 text-indigo-300 rounded">Local Seat</span>' : ''}
-                </div>
-                <div class="text-[11px] font-mono-num text-emerald-400">@${p.username}</div>
+                <div class="text-xs font-bold text-white">${p.displayName}</div>
+                <div class="text-[11px] text-emerald-400">@${p.username}</div>
               </div>
             </div>
-            <span class="text-[11px] font-mono-num text-slate-400">$${p.money}</span>
+            <span class="text-xs font-semibold text-slate-300">$${p.money}</span>
           </div>
         `);
       } else {
         slotsHtml.push(`
-          <div class="p-3 rounded-xl bg-slate-950/40 border border-dashed border-slate-800 flex items-center justify-between text-slate-500">
+          <div class="p-2.5 rounded-lg bg-slate-900/40 border border-dashed border-slate-700 flex items-center justify-between text-slate-400">
             <span class="text-xs">Seat #${i + 1} — Open</span>
-            <span class="text-[10px] font-mono-num">Invite @username</span>
           </div>
         `);
       }
@@ -899,7 +914,7 @@ function syncActiveRoomUI(room) {
 }
 
 // ============================================================================
-// 6. EXACT 11x11 PERIMETER MONOPOLY BOARD RENDERER & DEED INSPECTOR
+// 6. CLASSIC 11x11 MONOPOLY BOARD RENDERER & CLASSIC TITLE DEED CARD
 // ============================================================================
 function getGridPositionForTile(tileId) {
   if (tileId >= 0 && tileId <= 10) return { row: 11, col: 11 - tileId };
@@ -938,9 +953,9 @@ function renderMonopolyGrid(room) {
       const grp = GROUP_COLORS[tile.group];
       let pipsHtml = '';
       if (houses > 0 && houses < 5) {
-        pipsHtml = Array(houses).fill('<span class="w-2 h-2 rounded-full bg-emerald-300 border border-slate-950 shadow"></span>').join('');
+        pipsHtml = Array(houses).fill('<span class="w-2.5 h-2.5 rounded-sm bg-green-600 border border-black shadow-sm"></span>').join('');
       } else if (houses === 5) {
-        pipsHtml = '<span class="text-[9px] leading-none">🏨</span>';
+        pipsHtml = '<span class="w-3.5 h-2.5 rounded-sm bg-red-600 border border-black shadow-sm"></span>';
       }
       headerBarHtml = `
         <div class="color-bar" style="background-color: ${grp.hex}">
@@ -950,7 +965,7 @@ function renderMonopolyGrid(room) {
     }
 
     const ownerStripHtml = owner
-      ? `<div class="w-full h-1.5 rounded-sm" style="background-color: ${owner.color}" title="Owned by @${owner.username}"></div>`
+      ? `<div class="w-full h-2 border-t border-black/40" style="background-color: ${owner.color}" title="Owned by @${owner.username}"></div>`
       : '';
 
     const isSelected = selectedInspectTileId === tile.id;
@@ -958,12 +973,12 @@ function renderMonopolyGrid(room) {
     return `
       <div data-tile-id="${tile.id}"
         style="grid-row: ${pos.row}; grid-column: ${pos.col};"
-        class="board-tile ${isMortgaged ? 'mortgaged' : ''} ${isSelected ? 'ring-2 ring-cyan-400 z-10' : ''}">
+        class="board-tile ${isMortgaged ? 'mortgaged' : ''} ${isSelected ? 'ring-2 ring-blue-600 z-10' : ''}">
         ${headerBarHtml}
         <div class="flex-1 flex flex-col items-center justify-center px-0.5">
           ${tile.icon ? `<div class="text-xs leading-none mb-0.5">${tile.icon}</div>` : ''}
           <div class="tile-name">${tile.name}</div>
-          ${tile.price > 0 ? `<div class="tile-price">${isMortgaged ? 'MORT' : '$' + tile.price}</div>` : ''}
+          ${tile.price > 0 ? `<div class="tile-price">${isMortgaged ? 'MORTGAGED' : '$' + tile.price}</div>` : ''}
         </div>
         <div class="tile-tokens">
           ${standingPlayers.map(p => `
@@ -1003,8 +1018,8 @@ function buildCenterCommandHubHtml(room) {
     return `
       <div class="board-center items-center justify-center text-center p-6">
         <div class="text-5xl mb-3">🏆</div>
-        <h2 class="text-3xl font-display font-black text-emerald-400">SYNDICATE WINNER!</h2>
-        <p class="text-lg font-bold text-white mt-2">${room.winnerName} conquered COPYPOLY!</p>
+        <h2 class="text-2xl font-extrabold text-slate-900">GAME OVER!</h2>
+        <p class="text-base font-bold text-emerald-800 mt-2">${room.winnerName} wins COPYPOLY!</p>
       </div>
     `;
   }
@@ -1014,23 +1029,23 @@ function buildCenterCommandHubHtml(room) {
     if (activePlayer.inJail) {
       phaseActionsHtml = `
         <div class="flex flex-wrap items-center justify-center gap-2">
-          <button id="btnRollDice" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:opacity-95 text-slate-950 font-display font-extrabold text-xs shadow-lg">
-            🎲 Roll for Doubles (Attempt ${activePlayer.jailTurns + 1}/3)
+          <button id="btnRollDice" class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow">
+            Roll for Doubles (${activePlayer.jailTurns + 1}/3)
           </button>
-          <button id="btnPayBail" ${activePlayer.money < 50 ? 'disabled' : ''} class="px-3.5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 font-bold text-xs">
-            💸 Pay $50 Bail
+          <button id="btnPayBail" ${activePlayer.money < 50 ? 'disabled' : ''} class="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-bold text-xs">
+            Pay $50 Bail
           </button>
           ${activePlayer.jailFreeCards > 0 ? `
-            <button id="btnUseJailCard" class="px-3.5 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-bold text-xs">
-              🃏 Use Slammer Pass
+            <button id="btnUseJailCard" class="px-3.5 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-bold text-xs">
+              Use Jail Free Card
             </button>
           ` : ''}
         </div>
       `;
     } else {
       phaseActionsHtml = `
-        <button id="btnRollDice" class="px-7 py-3 rounded-xl bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500 hover:scale-105 text-slate-950 font-display font-extrabold text-sm shadow-xl shadow-emerald-500/25 transition flex items-center gap-2">
-          <i class="fa-solid fa-dice text-base"></i> Roll Dice
+        <button id="btnRollDice" class="px-7 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-sm shadow-md transition flex items-center gap-2">
+          <i class="fa-solid fa-dice"></i> Roll Dice
         </button>
       `;
     }
@@ -1038,13 +1053,13 @@ function buildCenterCommandHubHtml(room) {
     const canAfford = activePlayer.money >= currentTile.price;
     phaseActionsHtml = `
       <div class="flex flex-col items-center gap-2">
-        <div class="text-xs font-bold text-cyan-300">Unowned Deed: <span class="text-white">${currentTile.name} ($${currentTile.price})</span></div>
+        <div class="text-xs font-bold text-slate-800">Unowned Property: <span>${currentTile.name} ($${currentTile.price})</span></div>
         <div class="flex flex-wrap items-center justify-center gap-2">
-          <button id="btnBuyProperty" ${!canAfford ? 'disabled' : ''} class="px-5 py-2.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 disabled:opacity-40 text-slate-950 font-display font-extrabold text-xs shadow-lg">
-            💰 Buy for $${currentTile.price}
+          <button id="btnBuyProperty" ${!canAfford ? 'disabled' : ''} class="px-5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white font-bold text-xs shadow">
+            Buy for $${currentTile.price}
           </button>
-          <button id="btnStartAuction" class="px-4 py-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 font-bold text-xs">
-            🔨 Auction to Room
+          <button id="btnStartAuction" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs">
+            Auction
           </button>
         </div>
       </div>
@@ -1053,17 +1068,17 @@ function buildCenterCommandHubHtml(room) {
     const debt = room.pendingDebt;
     const canPayNow = activePlayer.money >= debt.amount;
     phaseActionsHtml = `
-      <div class="bg-rose-950/80 border border-rose-500/50 rounded-xl p-3 text-center space-y-2 max-w-md">
-        <div class="text-xs font-bold text-rose-300">
-          ⚠️ @${activePlayer.username} owes <span class="font-mono-num text-white">$${debt.amount}</span> (${debt.reason})
+      <div class="bg-red-100 border-2 border-red-600 rounded-lg p-3 text-center space-y-2 max-w-md">
+        <div class="text-xs font-bold text-red-900">
+          @${activePlayer.username} owes $${debt.amount} (${debt.reason})
         </div>
-        <div class="text-[11px] text-slate-300">Sell houses, mortgage deeds in the Inspector, or Trade with players to raise cash!</div>
+        <div class="text-[11px] text-red-800">Sell houses, mortgage properties, or trade to raise cash.</div>
         <div class="flex items-center justify-center gap-2 pt-1">
-          <button id="btnPayPendingDebt" ${!canPayNow ? 'disabled' : ''} class="px-4 py-2 rounded-lg bg-emerald-400 disabled:opacity-40 text-slate-950 font-extrabold text-xs">
-            ✅ Pay $${debt.amount} Now
+          <button id="btnPayPendingDebt" ${!canPayNow ? 'disabled' : ''} class="px-4 py-1.5 rounded bg-emerald-700 disabled:opacity-40 text-white font-bold text-xs">
+            Pay $${debt.amount}
           </button>
-          <button id="btnDeclareBankruptcy" class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs">
-            🏳️ Declare Bankruptcy
+          <button id="btnDeclareBankruptcy" class="px-4 py-1.5 rounded bg-red-700 hover:bg-red-600 text-white font-bold text-xs">
+            Declare Bankruptcy
           </button>
         </div>
       </div>
@@ -1073,11 +1088,11 @@ function buildCenterCommandHubHtml(room) {
     phaseActionsHtml = `
       <div class="flex flex-wrap items-center justify-center gap-2.5">
         ${rolledDoubles ? `
-          <button id="btnRollDice" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-emerald-400 text-slate-950 font-display font-extrabold text-xs shadow-lg">
-            🎲 Rolled Doubles! Roll Again
+          <button id="btnRollDice" class="px-6 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow">
+            Rolled Doubles! Roll Again
           </button>
         ` : `
-          <button id="btnEndTurn" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-indigo-500 hover:opacity-95 text-slate-950 font-display font-extrabold text-xs shadow-lg">
+          <button id="btnEndTurn" class="px-6 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow">
             End Turn <i class="fa-solid fa-forward-step ml-1"></i>
           </button>
         `}
@@ -1087,65 +1102,69 @@ function buildCenterCommandHubHtml(room) {
 
   return `
     <div class="board-center">
-      <div class="flex items-center justify-between gap-2">
-        <div class="flex-1 bg-slate-900/90 border border-amber-500/30 rounded-xl p-2 flex items-center gap-2">
-          <div class="w-8 h-10 rounded-lg bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-slate-950 font-bold text-base shadow">⚡</div>
+      <!-- Top Row: Classic Card Decks & Classic Red COPYPOLY Logo -->
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex-1 bg-amber-50 border-2 border-slate-800 rounded-lg p-2 flex items-center gap-2 shadow-sm">
+          <div class="w-8 h-10 rounded bg-amber-400 border border-slate-900 flex items-center justify-center font-bold text-base">❓</div>
           <div class="leading-tight">
-            <div class="text-[10px] font-mono-num uppercase text-amber-400 font-bold">Plot Twist</div>
-            <div class="text-[10px] text-slate-400">16-Card Deck</div>
+            <div class="text-xs font-extrabold text-slate-900 uppercase">Plot Twist</div>
+            <div class="text-[10px] text-slate-600">Chance Deck</div>
           </div>
         </div>
-        <div class="px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700/80 text-center hidden sm:block">
-          <div class="font-display font-black text-sm tracking-wider bg-gradient-to-r from-emerald-400 via-cyan-300 to-indigo-400 bg-clip-text text-transparent">COPYPOLY</div>
-          <div class="text-[9px] font-mono-num text-slate-400">8-PLAYER SYNDICATE</div>
+
+        <div class="px-5 py-2 rounded bg-red-600 border-2 border-white shadow-md text-center hidden sm:block">
+          <div class="font-extrabold text-lg tracking-widest text-white">COPYPOLY</div>
         </div>
-        <div class="flex-1 bg-slate-900/90 border border-cyan-500/30 rounded-xl p-2 flex items-center justify-end gap-2 text-right">
+
+        <div class="flex-1 bg-sky-50 border-2 border-slate-800 rounded-lg p-2 flex items-center justify-end gap-2 text-right shadow-sm">
           <div class="leading-tight">
-            <div class="text-[10px] font-mono-num uppercase text-cyan-400 font-bold">Karma Vault</div>
-            <div class="text-[10px] text-slate-400">16-Card Deck</div>
+            <div class="text-xs font-extrabold text-slate-900 uppercase">Karma Vault</div>
+            <div class="text-[10px] text-slate-600">Community Deck</div>
           </div>
-          <div class="w-8 h-10 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-slate-950 font-bold text-base shadow">📦</div>
+          <div class="w-8 h-10 rounded bg-sky-400 border border-slate-900 flex items-center justify-center font-bold text-base">📦</div>
         </div>
       </div>
 
-      <div class="flex-1 flex flex-col items-center justify-center my-2 px-3 py-3 rounded-2xl bg-slate-900/75 border border-slate-800/90 relative">
-        <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-950 border border-slate-700 mb-2">
-          <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs" style="background:${activePlayer.color}">${activePlayer.emoji}</span>
-          <span class="text-xs font-bold text-white">${activePlayer.displayName}</span>
-          <span class="text-xs font-mono-num text-emerald-400">(@${activePlayer.username})</span>
-          <span class="text-xs font-mono-num font-bold text-amber-300 ml-1">$${activePlayer.money}</span>
+      <!-- Center Stage: Active Turn Card & Classic White Dice -->
+      <div class="flex-1 flex flex-col items-center justify-center my-3 px-4 py-3 rounded-xl bg-white/85 border-2 border-slate-800 shadow-sm">
+        <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-400 mb-2">
+          <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs border border-black" style="background:${activePlayer.color}">${activePlayer.emoji}</span>
+          <span class="text-xs font-bold text-slate-900">${activePlayer.displayName}</span>
+          <span class="text-xs text-slate-600">(@${activePlayer.username})</span>
+          <span class="text-xs font-extrabold text-emerald-700 ml-1">$${activePlayer.money}</span>
         </div>
 
         <div class="flex items-center gap-4 my-2">
-          <div id="dieBox1" class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-white to-slate-200 text-slate-950 font-mono-num font-black text-2xl flex items-center justify-center shadow-lg border-2 border-emerald-400 ${isRollingAnim ? 'dice-rolling' : ''}">
+          <div id="dieBox1" class="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-white text-slate-900 font-extrabold text-2xl flex items-center justify-center shadow-md border-2 border-slate-900 ${isRollingAnim ? 'dice-rolling' : ''}">
             ${d1}
           </div>
-          <div id="dieBox2" class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-white to-slate-200 text-slate-950 font-mono-num font-black text-2xl flex items-center justify-center shadow-lg border-2 border-cyan-400 ${isRollingAnim ? 'dice-rolling' : ''}">
+          <div id="dieBox2" class="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-white text-slate-900 font-extrabold text-2xl flex items-center justify-center shadow-md border-2 border-slate-900 ${isRollingAnim ? 'dice-rolling' : ''}">
             ${d2}
           </div>
         </div>
 
-        <div class="text-[11px] text-slate-400 mb-3 text-center">
-          Standing on <strong class="text-white">${currentTile.name}</strong>
-          ${activePlayer.inJail ? '<span class="ml-1 text-rose-400 font-bold">(In The Slammer)</span>' : ''}
+        <div class="text-xs text-slate-700 mb-3 text-center">
+          Current Space: <strong class="text-slate-950">${currentTile.name}</strong>
+          ${activePlayer.inJail ? '<span class="ml-1 text-red-600 font-bold">(In Jail)</span>' : ''}
         </div>
 
         ${phaseActionsHtml}
 
         ${room.lastCard ? `
-          <div class="mt-3 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-center max-w-md">
-            <div class="text-[10px] font-mono-num uppercase text-amber-300 font-bold">${room.lastCard.deck}: ${room.lastCard.title}</div>
-            <div class="text-[11px] text-slate-200">${room.lastCard.desc}</div>
+          <div class="mt-3 px-3 py-1.5 rounded-lg bg-amber-100 border border-amber-500 text-center max-w-md">
+            <div class="text-[11px] uppercase text-amber-900 font-bold">${room.lastCard.deck}: ${room.lastCard.title}</div>
+            <div class="text-xs text-slate-800">${room.lastCard.desc}</div>
           </div>
         ` : ''}
       </div>
 
-      <div class="flex items-center justify-between gap-2 bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-2">
-        <div class="text-[11px] text-slate-400 truncate">
-          <i class="fa-solid fa-hand-pointer text-cyan-400 mr-1"></i> Click any tile to build houses, mortgage, or inspect rent
+      <!-- Bottom Quick Bar -->
+      <div class="flex items-center justify-between gap-2 bg-white/90 border-2 border-slate-800 rounded-lg px-3 py-2">
+        <div class="text-xs text-slate-700 truncate">
+          Click any property on the board to view its Title Deed or build houses.
         </div>
-        <button id="btnCenterProposeTrade" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-display font-extrabold text-xs transition whitespace-nowrap flex items-center gap-1.5 shadow">
-          <i class="fa-solid fa-handshake"></i> Propose Trade
+        <button id="btnCenterProposeTrade" class="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition whitespace-nowrap shadow-sm">
+          Trade
         </button>
       </div>
     </div>
@@ -1182,7 +1201,7 @@ function bindCenterHubEvents(room) {
 }
 
 // ============================================================================
-// 7. COMPLETE MONOPOLY GAMEPLAY MECHANICS (MOVEMENT, RENT, CARDS, SLAMMER)
+// 7. MONOPOLY GAMEPLAY MECHANICS
 // ============================================================================
 function playerOwnsFullColorGroup(room, ownerUsername, groupKey) {
   if (!groupKey || !ownerUsername) return false;
@@ -1230,7 +1249,7 @@ async function executeDiceRoll(room) {
   playSfx('dice');
   renderMonopolyGrid(room);
 
-  await new Promise(r => setTimeout(r, 380));
+  await new Promise(r => setTimeout(r, 350));
   isRollingAnim = false;
 
   const d1 = Math.floor(Math.random() * 6) + 1;
@@ -1248,9 +1267,9 @@ async function executeDiceRoll(room) {
       room.doublesCount = 0;
       room.logs.unshift({
         time: Date.now(),
-        text: `🎲 @${player.username} rolled doubles (${d1}+${d2}) and broke out of The Slammer!`
+        text: `@${player.username} rolled doubles (${d1}+${d2}) and got out of Jail!`
       });
-      await movePlayerAndResolveTile(room, player, total, false);
+      await movePlayerAndResolveTile(room, player, total);
     } else {
       player.jailTurns += 1;
       if (player.jailTurns >= 3) {
@@ -1258,16 +1277,16 @@ async function executeDiceRoll(room) {
         player.jailTurns = 0;
         room.logs.unshift({
           time: Date.now(),
-          text: `⛓️ @${player.username} missed doubles 3 times — mandatory $50 bail charged and moving ${total} spaces.`
+          text: `@${player.username} paid $50 bail after 3 turns and moved ${total} spaces.`
         });
-        chargePlayerOrCreateDebt(room, player, 50, null, 'Slammer Mandatory Bail');
+        chargePlayerOrCreateDebt(room, player, 50, null, 'Mandatory Jail Bail');
         if (room.turnPhase !== 'DEBT_RESOLUTION') {
-          await movePlayerAndResolveTile(room, player, total, false);
+          await movePlayerAndResolveTile(room, player, total);
         }
       } else {
         room.logs.unshift({
           time: Date.now(),
-          text: `⛓️ @${player.username} rolled ${d1}+${d2} (no doubles) and stays in The Slammer (${player.jailTurns}/3).`
+          text: `@${player.username} rolled ${d1}+${d2} (no doubles) and stays in Jail (${player.jailTurns}/3).`
         });
         room.turnPhase = 'POST_ROLL';
       }
@@ -1279,7 +1298,7 @@ async function executeDiceRoll(room) {
   if (isDoubles) {
     room.doublesCount = (room.doublesCount || 0) + 1;
     if (room.doublesCount >= 3) {
-      sendPlayerToSlammer(room, player, 'Rolled 3 consecutive doubles (Speeding!)');
+      sendPlayerToSlammer(room, player, 'Rolled 3 consecutive doubles');
       await saveRoomState(room);
       return;
     }
@@ -1289,10 +1308,10 @@ async function executeDiceRoll(room) {
 
   room.logs.unshift({
     time: Date.now(),
-    text: `🎲 @${player.username} rolled ${d1} + ${d2} = ${total}${isDoubles ? ' (DOUBLES!)' : ''}.`
+    text: `@${player.username} rolled ${d1} + ${d2} = ${total}${isDoubles ? ' (Doubles!)' : ''}.`
   });
 
-  await movePlayerAndResolveTile(room, player, total, isDoubles);
+  await movePlayerAndResolveTile(room, player, total);
   await saveRoomState(room);
 }
 
@@ -1305,11 +1324,11 @@ function sendPlayerToSlammer(room, player, reason) {
   playSfx('jail');
   room.logs.unshift({
     time: Date.now(),
-    text: `🚨 BUSTED! @${player.username} sent to The Slammer (${reason}).`
+    text: `@${player.username} was sent to Jail (${reason}).`
   });
 }
 
-async function movePlayerAndResolveTile(room, player, steps, allowExtraTurn) {
+async function movePlayerAndResolveTile(room, player, steps) {
   const oldPos = player.position;
   const newPos = (oldPos + steps + 40) % 40;
 
@@ -1318,7 +1337,7 @@ async function movePlayerAndResolveTile(room, player, steps, allowExtraTurn) {
     playSfx('cash');
     room.logs.unshift({
       time: Date.now(),
-      text: `🏁 @${player.username} passed START LINE and collected $200!`
+      text: `@${player.username} passed START LINE and collected $200.`
     });
   }
 
@@ -1337,7 +1356,7 @@ async function resolveLandingOnTile(room, player) {
   }
 
   if (tile.type === 'gotojail') {
-    sendPlayerToSlammer(room, player, 'Landed on BUSTED!');
+    sendPlayerToSlammer(room, player, 'Landed on Go To Jail');
     return;
   }
 
@@ -1353,7 +1372,7 @@ async function resolveLandingOnTile(room, player) {
     room.lastCard = { deck: isChance ? 'Plot Twist' : 'Karma Vault', title: card.title, desc: card.desc };
     room.logs.unshift({
       time: Date.now(),
-      text: `🃏 @${player.username} drew ${room.lastCard.deck}: "${card.title}" — ${card.desc}`
+      text: `@${player.username} drew ${room.lastCard.deck}: "${card.title}" — ${card.desc}`
     });
     await applyDeckCardEffect(room, player, card);
     return;
@@ -1366,16 +1385,7 @@ async function resolveLandingOnTile(room, player) {
       return;
     }
 
-    if (propState.owner === player.username) {
-      room.turnPhase = 'POST_ROLL';
-      return;
-    }
-
-    if (propState.mortgaged) {
-      room.logs.unshift({
-        time: Date.now(),
-        text: `💤 @${player.username} landed on ${tile.name} (Mortgaged by @${propState.owner} — No rent).`
-      });
+    if (propState.owner === player.username || propState.mortgaged) {
       room.turnPhase = 'POST_ROLL';
       return;
     }
@@ -1396,7 +1406,7 @@ async function applyDeckCardEffect(room, player, card) {
       player.money += 200;
       room.logs.unshift({
         time: Date.now(),
-        text: `🏁 @${player.username} passed START LINE and collected $200!`
+        text: `@${player.username} passed START LINE and collected $200.`
       });
     }
     player.position = card.target;
@@ -1466,12 +1476,12 @@ function chargePlayerOrCreateDebt(room, player, amount, creditorUsername, reason
       if (cred) cred.money += amount;
       room.logs.unshift({
         time: Date.now(),
-        text: `💸 @${player.username} paid $${amount} to @${creditorUsername} (${reason}).`
+        text: `@${player.username} paid $${amount} to @${creditorUsername} (${reason}).`
       });
     } else {
       room.logs.unshift({
         time: Date.now(),
-        text: `💸 @${player.username} paid $${amount} to the Bank (${reason}).`
+        text: `@${player.username} paid $${amount} to the Bank (${reason}).`
       });
     }
     playSfx('cash');
@@ -1488,7 +1498,7 @@ function chargePlayerOrCreateDebt(room, player, amount, creditorUsername, reason
     playSfx('jail');
     room.logs.unshift({
       time: Date.now(),
-      text: `⚠️ @${player.username} owes $${amount} (${reason}) but only has $${player.money}! Raise funds or declare bankruptcy.`
+      text: `@${player.username} owes $${amount} (${reason}) but only has $${player.money}.`
     });
   }
 }
@@ -1502,7 +1512,7 @@ async function executePayJailBail(room) {
   playSfx('cash');
   room.logs.unshift({
     time: Date.now(),
-    text: `🔓 @${player.username} paid $50 bail and stepped out of The Slammer.`
+    text: `@${player.username} paid $50 bail and left Jail.`
   });
   await saveRoomState(room);
 }
@@ -1516,7 +1526,7 @@ async function executeUseJailCard(room) {
   playSfx('buy');
   room.logs.unshift({
     time: Date.now(),
-    text: `🃏 @${player.username} used a Get Out of Slammer Free pass!`
+    text: `@${player.username} used a Get Out of Jail Free card.`
   });
   await saveRoomState(room);
 }
@@ -1536,7 +1546,7 @@ async function executeBuyProperty(room) {
   playSfx('buy');
   room.logs.unshift({
     time: Date.now(),
-    text: `🏠 @${player.username} purchased ${tile.name} for $${tile.price}!`
+    text: `@${player.username} bought ${tile.name} for $${tile.price}.`
   });
   await saveRoomState(room);
 }
@@ -1552,7 +1562,7 @@ async function executeStartAuction(room) {
   playSfx('trade');
   room.logs.unshift({
     time: Date.now(),
-    text: `🔨 @${player.username} sent ${tile.name} to an open floor auction!`
+    text: `${tile.name} is up for auction!`
   });
   await saveRoomState(room);
 }
@@ -1577,23 +1587,19 @@ async function executeDeclareBankruptcy(room) {
     creditor.money += Math.max(0, player.money);
     creditor.jailFreeCards = (creditor.jailFreeCards || 0) + (player.jailFreeCards || 0);
     Object.entries(room.properties).forEach(([tid, st]) => {
-      if (st.owner === player.username) {
-        st.owner = creditor.username;
-      }
+      if (st.owner === player.username) st.owner = creditor.username;
     });
     room.logs.unshift({
       time: Date.now(),
-      text: `💀 @${player.username} declared BANKRUPTCY! All assets transferred to @${creditor.username}.`
+      text: `@${player.username} declared bankruptcy to @${creditor.username}.`
     });
   } else {
     Object.entries(room.properties).forEach(([tid, st]) => {
-      if (st.owner === player.username) {
-        delete room.properties[tid];
-      }
+      if (st.owner === player.username) delete room.properties[tid];
     });
     room.logs.unshift({
       time: Date.now(),
-      text: `💀 @${player.username} declared BANKRUPTCY to the Bank! All their properties are now unowned.`
+      text: `@${player.username} declared bankruptcy to the Bank.`
     });
   }
 
@@ -1608,7 +1614,7 @@ async function executeDeclareBankruptcy(room) {
     room.winnerName = `${survivors[0].displayName} (@${survivors[0].username})`;
     room.logs.unshift({
       time: Date.now(),
-      text: `🏆 GAME OVER! @${survivors[0].username} is the last tycoon standing and wins COPYPOLY!`
+      text: `GAME OVER! @${survivors[0].username} wins COPYPOLY!`
     });
     playSfx('trade');
     await saveRoomState(room);
@@ -1640,7 +1646,7 @@ async function executeEndTurn(room) {
 }
 
 // ============================================================================
-// 8. BUILDING HOUSES / MEGA-HOTELS & MORTGAGING
+// 8. BUILDING HOUSES / HOTELS & MORTGAGING
 // ============================================================================
 function canBuildHouseOnTile(room, tile, ownerUsername) {
   if (tile.type !== 'prop') return false;
@@ -1676,11 +1682,11 @@ async function handleBuildHouse(room, tileId) {
   player.money -= tile.houseCost;
   st.houses = (st.houses || 0) + 1;
 
-  const label = st.houses === 5 ? 'a Mega-Hotel 🏨' : `House #${st.houses} 🏠`;
+  const label = st.houses === 5 ? 'a Hotel' : `House #${st.houses}`;
   playSfx('buy');
   room.logs.unshift({
     time: Date.now(),
-    text: `🏗️ @${player.username} built ${label} on ${tile.name} for $${tile.houseCost}.`
+    text: `@${player.username} built ${label} on ${tile.name} ($${tile.houseCost}).`
   });
   await saveRoomState(room);
 }
@@ -1698,7 +1704,7 @@ async function handleSellHouse(room, tileId) {
   playSfx('cash');
   room.logs.unshift({
     time: Date.now(),
-    text: `🔨 @${player.username} sold an upgrade on ${tile.name} for $${refund}.`
+    text: `@${player.username} sold a building on ${tile.name} (+$${refund}).`
   });
   await saveRoomState(room);
 }
@@ -1713,7 +1719,7 @@ async function handleToggleMortgage(room, tileId) {
 
   if (!st.mortgaged) {
     if ((st.houses || 0) > 0) {
-      showToast('Sell buildings on this property before mortgaging!', 'rose');
+      showToast('Sell houses on this property before mortgaging.', 'rose');
       return;
     }
     const mortgageVal = Math.floor(tile.price / 2);
@@ -1722,7 +1728,7 @@ async function handleToggleMortgage(room, tileId) {
     playSfx('cash');
     room.logs.unshift({
       time: Date.now(),
-      text: `🏦 @${player.username} mortgaged ${tile.name} for +$${mortgageVal}.`
+      text: `@${player.username} mortgaged ${tile.name} (+$${mortgageVal}).`
     });
   } else {
     const unmortgageCost = Math.ceil((tile.price / 2) * 1.1);
@@ -1735,57 +1741,55 @@ async function handleToggleMortgage(room, tileId) {
     playSfx('buy');
     room.logs.unshift({
       time: Date.now(),
-      text: `🔓 @${player.username} unmortgaged ${tile.name} for $${unmortgageCost}.`
+      text: `@${player.username} unmortgaged ${tile.name} (-$${unmortgageCost}).`
     });
   }
   await saveRoomState(room);
 }
 
 // ============================================================================
-// 9. SIDEBARS: 8-PLAYER ROSTER, PORTFOLIO & DEED INSPECTOR
+// 9. SIDEBARS & CLASSIC WHITE PAPER TITLE DEED INSPECTOR
 // ============================================================================
 function renderPlayerRoster(room) {
   const container = document.getElementById('gamePlayerRoster');
   const activePlayer = room.players[room.turnIndex];
 
-  container.innerHTML = room.players.map((p, idx) => {
+  container.innerHTML = room.players.map((p) => {
     const isTurn = activePlayer && activePlayer.username === p.username && !p.bankrupt;
     const propCount = Object.values(room.properties).filter(st => st.owner === p.username).length;
     const tileName = BOARD_TILES[p.position]?.name || 'Start Line';
 
     return `
-      <div class="p-2.5 rounded-xl border transition flex items-center justify-between gap-2 ${
+      <div class="p-2.5 rounded-lg border transition flex items-center justify-between gap-2 ${
         p.bankrupt
-          ? 'bg-slate-950/40 border-slate-800/60 opacity-45'
+          ? 'bg-slate-900/40 border-slate-800 opacity-45'
           : isTurn
-          ? 'bg-slate-800/95 border-emerald-400 shadow-md shadow-emerald-500/10'
-          : 'bg-slate-950/80 border-slate-800/90'
+          ? 'bg-slate-700 border-emerald-400 shadow'
+          : 'bg-slate-900 border-slate-700'
       }">
         <div class="flex items-center gap-2.5 min-w-0">
-          <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 relative"
-            style="background:${p.color}25; border:2px solid ${p.color}">
+          <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0"
+            style="background:${p.color}30; border:2px solid ${p.color}">
             ${p.emoji}
-            ${isTurn ? '<span class=" -top-1 -right-1 absolute w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-slate-950"></span>' : ''}
           </div>
           <div class="min-w-0">
             <div class="flex items-center gap-1.5">
               <span class="text-xs font-bold text-white truncate">${p.displayName}</span>
-              <span class="text-[10px] font-mono-num text-emerald-400">@${p.username}</span>
+              <span class="text-[11px] text-emerald-400">@${p.username}</span>
             </div>
-            <div class="text-[10px] text-slate-400 truncate">
-              ${p.bankrupt ? '💀 BANKRUPT' : `📍 ${tileName} • ${propCount} deeds`}
-              ${p.inJail ? ' • <span class="text-rose-400 font-bold">⛓️ Slammer</span>' : ''}
-              ${p.jailFreeCards > 0 ? ` • <span class="text-amber-300">🃏x${p.jailFreeCards}</span>` : ''}
+            <div class="text-[11px] text-slate-400 truncate">
+              ${p.bankrupt ? 'Bankrupt' : `${tileName} • ${propCount} properties`}
+              ${p.inJail ? ' • <span class="text-red-400 font-bold">In Jail</span>' : ''}
             </div>
           </div>
         </div>
 
         <div class="text-right shrink-0">
-          <div class="text-xs font-mono-num font-extrabold ${p.money < 100 ? 'text-rose-400' : 'text-emerald-400'}">
+          <div class="text-xs font-extrabold ${p.money < 100 ? 'text-red-400' : 'text-emerald-400'}">
             $${p.money}
           </div>
           ${!p.bankrupt ? `
-            <button data-partner="${p.username}" class="btn-quick-trade text-[10px] text-amber-300 hover:underline font-semibold">
+            <button data-partner="${p.username}" class="btn-quick-trade text-[11px] text-amber-300 hover:underline font-semibold">
               Trade
             </button>
           ` : ''}
@@ -1820,7 +1824,7 @@ function renderPortfolioSidebar(room) {
   const listEl = document.getElementById('portfolioDeedList');
 
   if (ownedTiles.length === 0) {
-    listEl.innerHTML = `<div class="text-xs text-slate-500 text-center py-4">No properties owned yet by @${selectedPortfolioPlayerId}.</div>`;
+    listEl.innerHTML = `<div class="text-xs text-slate-400 text-center py-4">No properties owned yet.</div>`;
     return;
   }
 
@@ -1828,17 +1832,17 @@ function renderPortfolioSidebar(room) {
     const st = room.properties[t.id];
     const grp = GROUP_COLORS[t.group] || { hex: '#64748b' };
     return `
-      <div data-tile="${t.id}" class="portfolio-item p-2 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 cursor-pointer flex items-center justify-between transition">
+      <div data-tile="${t.id}" class="portfolio-item p-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 cursor-pointer flex items-center justify-between transition">
         <div class="flex items-center gap-2">
-          <span class="w-3 h-5 rounded-sm shrink-0" style="background:${grp.hex}"></span>
+          <span class="w-3.5 h-5 rounded-sm border border-black/40 shrink-0" style="background:${grp.hex}"></span>
           <div>
             <div class="text-xs font-bold text-white">${t.name}</div>
             <div class="text-[10px] text-slate-400">
-              ${st.mortgaged ? '<span class="text-rose-400 font-bold">MORTGAGED</span>' : (st.houses === 5 ? '🏨 Mega-Hotel' : st.houses > 0 ? `🏠 ${st.houses} House(s)` : 'Unimproved')}
+              ${st.mortgaged ? '<span class="text-red-400 font-bold">MORTGAGED</span>' : (st.houses === 5 ? 'Hotel' : st.houses > 0 ? `${st.houses} House(s)` : 'Unimproved')}
             </div>
           </div>
         </div>
-        <span class="text-xs font-mono-num text-slate-400">$${t.price}</span>
+        <span class="text-xs font-semibold text-slate-300">$${t.price}</span>
       </div>
     `;
   }).join('');
@@ -1861,10 +1865,10 @@ function renderDeedInspector(room, tileId) {
 
   if (tile.type !== 'prop' && tile.type !== 'transit' && tile.type !== 'utility') {
     card.innerHTML = `
-      <div class="text-center py-4 space-y-2">
+      <div class="bg-white text-slate-900 border-2 border-slate-900 rounded-lg p-4 text-center space-y-1.5">
         <div class="text-3xl">${tile.icon || '🎲'}</div>
-        <h3 class="text-base font-display font-extrabold text-white">${tile.name}</h3>
-        <p class="text-xs text-slate-400">${tile.sub || 'Special Board Tile — Click any property deed on the perimeter to inspect full rent schedules & build upgrades.'}</p>
+        <h3 class="text-base font-extrabold">${tile.name}</h3>
+        <p class="text-xs text-slate-600">${tile.sub || 'Click any property space on the board to view its Title Deed card.'}</p>
       </div>
     `;
     return;
@@ -1873,34 +1877,34 @@ function renderDeedInspector(room, tileId) {
   let rentTableHtml = '';
   if (tile.type === 'prop') {
     rentTableHtml = `
-      <div class="space-y-1 text-xs my-3 bg-slate-950/90 p-3 rounded-xl border border-slate-800">
-        <div class="flex justify-between"><span class="text-slate-400">Base Rent</span><span class="font-mono-num font-bold text-white">$${tile.rent[0]}</span></div>
-        <div class="flex justify-between"><span class="text-emerald-400">Full Color Set (2x)</span><span class="font-mono-num font-bold text-emerald-400">$${tile.rent[0] * 2}</span></div>
-        <div class="flex justify-between"><span class="text-slate-300">With 1 House</span><span class="font-mono-num">$${tile.rent[1]}</span></div>
-        <div class="flex justify-between"><span class="text-slate-300">With 2 Houses</span><span class="font-mono-num">$${tile.rent[2]}</span></div>
-        <div class="flex justify-between"><span class="text-slate-300">With 3 Houses</span><span class="font-mono-num">$${tile.rent[3]}</span></div>
-        <div class="flex justify-between"><span class="text-slate-300">With 4 Houses</span><span class="font-mono-num">$${tile.rent[4]}</span></div>
-        <div class="flex justify-between border-t border-slate-800 pt-1"><span class="text-amber-300 font-bold">With Mega-Hotel 🏨</span><span class="font-mono-num font-extrabold text-amber-300">$${tile.rent[5]}</span></div>
-        <div class="flex justify-between text-[11px] text-slate-400 pt-1">
-          <span>Upgrade Cost: $${tile.houseCost}</span>
-          <span>Mortgage: $${Math.floor(tile.price / 2)}</span>
+      <div class="space-y-1 text-xs my-3 text-slate-800">
+        <div class="flex justify-between"><span>RENT</span><span class="font-bold">$${tile.rent[0]}</span></div>
+        <div class="flex justify-between"><span>Rent with color set</span><span class="font-bold">$${tile.rent[0] * 2}</span></div>
+        <div class="flex justify-between"><span>With 1 House</span><span>$${tile.rent[1]}</span></div>
+        <div class="flex justify-between"><span>With 2 Houses</span><span>$${tile.rent[2]}</span></div>
+        <div class="flex justify-between"><span>With 3 Houses</span><span>$${tile.rent[3]}</span></div>
+        <div class="flex justify-between"><span>With 4 Houses</span><span>$${tile.rent[4]}</span></div>
+        <div class="flex justify-between font-bold border-t border-slate-300 pt-1"><span>With HOTEL</span><span>$${tile.rent[5]}</span></div>
+        <div class="flex justify-between text-[11px] text-slate-600 pt-1">
+          <span>Houses cost $${tile.houseCost} each</span>
+          <span>Mortgage $${Math.floor(tile.price / 2)}</span>
         </div>
       </div>
     `;
   } else if (tile.type === 'transit') {
     rentTableHtml = `
-      <div class="space-y-1 text-xs my-3 bg-slate-950/90 p-3 rounded-xl border border-slate-800">
-        <div class="flex justify-between"><span class="text-slate-400">1 Transit Station</span><span class="font-mono-num font-bold">$25</span></div>
-        <div class="flex justify-between"><span class="text-slate-300">2 Transit Stations</span><span class="font-mono-num font-bold">$50</span></div>
-        <div class="flex justify-between"><span class="text-slate-300">3 Transit Stations</span><span class="font-mono-num font-bold">$100</span></div>
-        <div class="flex justify-between"><span class="text-emerald-400 font-bold">All 4 Stations</span><span class="font-mono-num font-extrabold text-emerald-400">$200</span></div>
+      <div class="space-y-1 text-xs my-3 text-slate-800">
+        <div class="flex justify-between"><span>Rent (1 Station)</span><span class="font-bold">$25</span></div>
+        <div class="flex justify-between"><span>If 2 Stations are owned</span><span class="font-bold">$50</span></div>
+        <div class="flex justify-between"><span>If 3 Stations are owned</span><span class="font-bold">$100</span></div>
+        <div class="flex justify-between font-bold"><span>If 4 Stations are owned</span><span>$200</span></div>
       </div>
     `;
   } else if (tile.type === 'utility') {
     rentTableHtml = `
-      <div class="space-y-1.5 text-xs my-3 bg-slate-950/90 p-3 rounded-xl border border-slate-800">
-        <div class="flex justify-between"><span class="text-slate-300">1 Utility Owned</span><span class="font-mono-num font-bold text-cyan-300">4x Dice Roll</span></div>
-        <div class="flex justify-between"><span class="text-emerald-400 font-bold">Both Utilities Owned</span><span class="font-mono-num font-extrabold text-emerald-400">10x Dice Roll</span></div>
+      <div class="space-y-1.5 text-xs my-3 text-slate-800">
+        <p>If one Utility is owned, rent is <strong>4 times</strong> amount shown on dice.</p>
+        <p>If both Utilities are owned, rent is <strong>10 times</strong> amount shown on dice.</p>
       </div>
     `;
   }
@@ -1912,47 +1916,44 @@ function renderDeedInspector(room, tileId) {
     const unmortCost = Math.ceil((tile.price / 2) * 1.1);
 
     manageControlsHtml = `
-      <div class="space-y-2 pt-2 border-t border-slate-800">
+      <div class="space-y-2 pt-2 border-t border-slate-300 text-slate-900">
         <div class="flex items-center justify-between text-xs">
-          <span class="text-slate-400">Owner:</span>
-          <span class="font-bold text-white flex items-center gap-1">
-            <span>${owner.emoji}</span> @${owner.username}
-          </span>
+          <span class="text-slate-600">Owner:</span>
+          <span class="font-bold">${owner.emoji} @${owner.username}</span>
         </div>
         <div class="grid grid-cols-2 gap-2">
           ${tile.type === 'prop' ? `
-            <button id="btnInspectorBuild" ${!canBuild ? 'disabled' : ''} class="px-2.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-30 text-slate-950 font-bold text-xs transition">
-              + Build ($${tile.houseCost})
+            <button id="btnInspectorBuild" ${!canBuild ? 'disabled' : ''} class="px-2.5 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 disabled:opacity-30 text-white font-bold text-xs transition">
+              + House ($${tile.houseCost})
             </button>
-            <button id="btnInspectorSell" ${!canSell ? 'disabled' : ''} class="px-2.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 disabled:opacity-30 text-amber-300 border border-amber-500/40 font-bold text-xs transition">
+            <button id="btnInspectorSell" ${!canSell ? 'disabled' : ''} class="px-2.5 py-1.5 rounded bg-amber-600 hover:bg-amber-500 disabled:opacity-30 text-white font-bold text-xs transition">
               - Sell (+$${Math.floor(tile.houseCost / 2)})
             </button>
           ` : ''}
         </div>
-        <button id="btnInspectorMortgage" class="w-full py-2 rounded-xl font-bold text-xs border transition ${
-          st.mortgaged
-            ? 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border-cyan-500/40'
-            : 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/30'
-        }">
-          ${st.mortgaged ? `🔓 Unmortgage Deed (-$${unmortCost})` : `🏦 Mortgage Deed (+$${Math.floor(tile.price / 2)})`}
+        <button id="btnInspectorMortgage" class="w-full py-1.5 rounded font-bold text-xs border border-slate-400 bg-slate-100 hover:bg-slate-200 text-slate-800 transition">
+          ${st.mortgaged ? `Unmortgage (-$${unmortCost})` : `Mortgage (+$${Math.floor(tile.price / 2)})`}
         </button>
       </div>
     `;
   } else {
     manageControlsHtml = `
-      <div class="text-center py-1.5 px-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400">
-        Unowned Deed — Land here to purchase for <strong class="text-white font-mono-num">$${tile.price}</strong>
+      <div class="text-center py-1.5 px-3 rounded bg-slate-100 border border-slate-300 text-xs text-slate-700">
+        Unowned — Price: <strong>$${tile.price}</strong>
       </div>
     `;
   }
 
+  // Classic White Paper Title Deed Card
   card.innerHTML = `
-    <div class="rounded-xl p-3 text-center shadow-inner" style="background-color: ${grp ? grp.hex : '#334155'}">
-      <div class="text-[10px] font-mono-num uppercase tracking-widest text-white/80 font-bold">${grp ? grp.label : 'Deed'}</div>
-      <h3 class="text-base font-display font-extrabold text-white mt-0.5">${tile.name}</h3>
+    <div class="bg-white text-slate-900 border-2 border-slate-900 rounded-lg p-3 shadow">
+      <div class="rounded border-2 border-slate-900 p-2.5 text-center" style="background-color: ${grp ? grp.hex : '#334155'}; color: ${grp ? grp.text : '#ffffff'}">
+        <div class="text-[10px] uppercase tracking-wider font-bold opacity-90">Title Deed</div>
+        <h3 class="text-base font-extrabold mt-0.5">${tile.name}</h3>
+      </div>
+      ${rentTableHtml}
+      ${manageControlsHtml}
     </div>
-    ${rentTableHtml}
-    ${manageControlsHtml}
   `;
 
   const bBuild = document.getElementById('btnInspectorBuild');
@@ -1971,14 +1972,14 @@ function renderActivityLog(room) {
   const logs = room.logs || [];
 
   logEl.innerHTML = logs.map((item, i) => `
-    <div class="p-2 rounded-lg ${i === 0 ? 'bg-slate-800/90 border border-emerald-500/30 text-white font-medium' : 'bg-slate-950/60 text-slate-300'}">
+    <div class="p-2 rounded ${i === 0 ? 'bg-slate-700 text-white font-semibold' : 'bg-slate-900/70 text-slate-300'}">
       ${item.text}
     </div>
   `).join('');
 }
 
 // ============================================================================
-// 10. PLAYER-TO-PLAYER TRADING ENGINE & AUCTION MODAL
+// 10. PLAYER-TO-PLAYER TRADING & AUCTION MODALS
 // ============================================================================
 function openTradeHubModal(room, defaultPartnerUsername = null) {
   const modal = document.getElementById('modalTradeHub');
@@ -2019,17 +2020,17 @@ function openTradeHubModal(room, defaultPartnerUsername = null) {
     const toProps = BOARD_TILES.filter(t => room.properties[t.id]?.owner === toUser && (room.properties[t.id]?.houses || 0) === 0);
 
     const renderPropList = (tiles, cls) => {
-      if (tiles.length === 0) return `<div class="text-xs text-slate-500 py-2">No tradable unimproved properties.</div>`;
+      if (tiles.length === 0) return `<div class="text-xs text-slate-400 py-2">No tradable properties.</div>`;
       return tiles.map(t => {
         const grp = GROUP_COLORS[t.group] || { hex: '#64748b' };
         return `
-          <label class="flex items-center justify-between p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 cursor-pointer text-xs">
+          <label class="flex items-center justify-between p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 cursor-pointer text-xs">
             <div class="flex items-center gap-2">
-              <input type="checkbox" value="${t.id}" class="${cls} accent-emerald-400" />
-              <span class="w-2.5 h-4 rounded-sm" style="background:${grp.hex}"></span>
+              <input type="checkbox" value="${t.id}" class="${cls} accent-emerald-500" />
+              <span class="w-3 h-4 rounded-sm border border-black/40" style="background:${grp.hex}"></span>
               <span class="font-semibold text-white">${t.name}</span>
             </div>
-            <span class="font-mono-num text-slate-400">$${t.price}</span>
+            <span class="text-slate-300">$${t.price}</span>
           </label>
         `;
       }).join('');
@@ -2055,7 +2056,7 @@ async function submitTradeProposal() {
   const errBox = document.getElementById('tradeModalError');
 
   if (fromUser === toUser) {
-    errBox.textContent = 'Select two different players to make a trade!';
+    errBox.textContent = 'Select two different players to trade.';
     errBox.classList.remove('hidden');
     return;
   }
@@ -2068,18 +2069,8 @@ async function submitTradeProposal() {
   const offerCards = Math.max(0, parseInt(document.getElementById('inputTradeOfferCards').value, 10) || 0);
   const requestCards = Math.max(0, parseInt(document.getElementById('inputTradeRequestCards').value, 10) || 0);
 
-  if (offerCash > fromPlayer.money) {
-    errBox.textContent = `@${fromUser} only has $${fromPlayer.money}!`;
-    errBox.classList.remove('hidden');
-    return;
-  }
-  if (requestCash > toPlayer.money) {
-    errBox.textContent = `@${toUser} only has $${toPlayer.money}!`;
-    errBox.classList.remove('hidden');
-    return;
-  }
-  if (offerCards > (fromPlayer.jailFreeCards || 0) || requestCards > (toPlayer.jailFreeCards || 0)) {
-    errBox.textContent = 'Invalid number of Slammer Free cards selected.';
+  if (offerCash > fromPlayer.money || requestCash > toPlayer.money) {
+    errBox.textContent = 'Cash amount exceeds player balance.';
     errBox.classList.remove('hidden');
     return;
   }
@@ -2088,7 +2079,7 @@ async function submitTradeProposal() {
   const requestProps = Array.from(document.querySelectorAll('.chk-req-prop:checked')).map(el => parseInt(el.value, 10));
 
   if (offerCash === 0 && requestCash === 0 && offerProps.length === 0 && requestProps.length === 0 && offerCards === 0 && requestCards === 0) {
-    errBox.textContent = 'Include at least one property, dollar amount, or card in the trade!';
+    errBox.textContent = 'Select at least one item to trade.';
     errBox.classList.remove('hidden');
     return;
   }
@@ -2107,7 +2098,7 @@ async function submitTradeProposal() {
 
   room.logs.unshift({
     time: Date.now(),
-    text: `🤝 @${fromUser} sent a live trade offer to @${toUser}!`
+    text: `@${fromUser} proposed a trade with @${toUser}.`
   });
 
   document.getElementById('modalTradeHub').classList.add('hidden');
@@ -2142,11 +2133,11 @@ async function executeAcceptActiveTrade(room) {
 
   room.logs.unshift({
     time: Date.now(),
-    text: `✅ TRADE COMPLETED between @${fromP.username} and @${toP.username}!`
+    text: `Trade completed between @${fromP.username} and @${toP.username}!`
   });
   room.activeTrade = null;
   playSfx('trade');
-  showToast('Trade accepted and assets swapped!', 'emerald');
+  showToast('Trade accepted!', 'emerald');
   await saveRoomState(room);
 }
 
@@ -2155,7 +2146,7 @@ async function executeDeclineActiveTrade(room) {
   if (!tr) return;
   room.logs.unshift({
     time: Date.now(),
-    text: `❌ Trade proposal between @${tr.from} and @${tr.to} was declined.`
+    text: `Trade between @${tr.from} and @${tr.to} was declined.`
   });
   room.activeTrade = null;
   await saveRoomState(room);
@@ -2169,35 +2160,33 @@ function syncTradeAndAuctionModals(room) {
     document.getElementById('incomingTradeSubtitle').textContent = `@${tr.from} ⇄ @${tr.to}`;
 
     const formatProps = (ids) => {
-      if (!ids || ids.length === 0) return '<div class="text-slate-500 text-xs">No properties</div>';
+      if (!ids || ids.length === 0) return '<div class="text-slate-400 text-xs">No properties</div>';
       return ids.map(id => {
         const t = BOARD_TILES[id];
         const grp = GROUP_COLORS[t.group] || { hex: '#64748b' };
-        return `<div class="flex items-center gap-1.5 text-xs text-white font-semibold"><span class="w-2.5 h-2.5 rounded-full" style="background:${grp.hex}"></span>${t.name} ($${t.price})</div>`;
+        return `<div class="flex items-center gap-1.5 text-xs text-white font-semibold"><span class="w-2.5 h-2.5 rounded-sm" style="background:${grp.hex}"></span>${t.name}</div>`;
       }).join('');
     };
 
     document.getElementById('incomingTradeBody').innerHTML = `
-      <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-        <div class="text-xs font-bold uppercase text-emerald-400">@${tr.from} Gives:</div>
-        <div class="text-sm font-mono-num font-bold text-white">💵 $${tr.offerCash} Cash</div>
-        ${tr.offerCards > 0 ? `<div class="text-xs text-amber-300">🃏 ${tr.offerCards}x Slammer Free Card</div>` : ''}
+      <div class="p-3 rounded-lg bg-slate-900 border border-slate-700 space-y-1.5">
+        <div class="text-xs font-bold text-emerald-400">@${tr.from} Offers:</div>
+        <div class="text-sm font-bold text-white">$${tr.offerCash} Cash</div>
         <div class="space-y-1 pt-1 border-t border-slate-800">${formatProps(tr.offerProps)}</div>
       </div>
-      <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-        <div class="text-xs font-bold uppercase text-cyan-400">@${tr.to} Gives:</div>
-        <div class="text-sm font-mono-num font-bold text-white">💵 $${tr.requestCash} Cash</div>
-        ${tr.requestCards > 0 ? `<div class="text-xs text-amber-300">🃏 ${tr.requestCards}x Slammer Free Card</div>` : ''}
+      <div class="p-3 rounded-lg bg-slate-900 border border-slate-700 space-y-1.5">
+        <div class="text-xs font-bold text-sky-400">@${tr.to} Gives:</div>
+        <div class="text-sm font-bold text-white">$${tr.requestCash} Cash</div>
         <div class="space-y-1 pt-1 border-t border-slate-800">${formatProps(tr.requestProps)}</div>
       </div>
     `;
 
     document.getElementById('incomingTradeActions').innerHTML = `
-      <button id="btnDeclineTradeOffer" class="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-bold text-xs">
-        Decline / Cancel
+      <button id="btnDeclineTradeOffer" class="px-4 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 font-bold text-xs">
+        Decline
       </button>
-      <button id="btnAcceptTradeOffer" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 font-display font-extrabold text-xs shadow-lg">
-        ✅ Accept Trade (@${tr.to})
+      <button id="btnAcceptTradeOffer" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow">
+        Accept Trade
       </button>
     `;
 
@@ -2213,26 +2202,26 @@ function syncTradeAndAuctionModals(room) {
     const tile = BOARD_TILES[auc.tileId];
     auctionModal.classList.remove('hidden');
 
-    document.getElementById('auctionTileName').textContent = `${tile.name} (List: $${tile.price})`;
+    document.getElementById('auctionTileName').textContent = `${tile.name} (Price: $${tile.price})`;
     document.getElementById('auctionHighBid').textContent = `$${auc.highBid}`;
-    document.getElementById('auctionHighBidder').textContent = `Highest Bidder: @${auc.highBidder}`;
+    document.getElementById('auctionHighBidder').textContent = `Leader: @${auc.highBidder}`;
 
     const biddersHtml = room.players.filter(p => !p.bankrupt).map(p => {
       const next10 = auc.highBid + 10;
       const next50 = auc.highBid + 50;
       return `
-        <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2">
+        <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-between gap-2">
           <div class="min-w-0">
             <div class="text-xs font-bold text-white truncate">${p.emoji} @${p.username}</div>
-            <div class="text-[10px] font-mono-num text-emerald-400">Cash: $${p.money}</div>
+            <div class="text-[11px] text-emerald-400">$${p.money}</div>
           </div>
           <div class="flex items-center gap-1">
             <button data-user="${p.username}" data-bid="${next10}" ${p.money < next10 ? 'disabled' : ''}
-              class="btn-auction-bid px-2 py-1 rounded bg-emerald-500 hover:bg-emerald-400 disabled:opacity-30 text-slate-950 font-mono-num font-bold text-[11px]">
+              class="btn-auction-bid px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-white font-bold text-xs">
               +$10
             </button>
             <button data-user="${p.username}" data-bid="${next50}" ${p.money < next50 ? 'disabled' : ''}
-              class="btn-auction-bid px-2 py-1 rounded bg-cyan-400 hover:bg-cyan-300 disabled:opacity-30 text-slate-950 font-mono-num font-bold text-[11px]">
+              class="btn-auction-bid px-2 py-1 rounded bg-sky-600 hover:bg-sky-500 disabled:opacity-30 text-white font-bold text-xs">
               +$50
             </button>
           </div>
@@ -2262,7 +2251,7 @@ function syncTradeAndAuctionModals(room) {
         };
         room.logs.unshift({
           time: Date.now(),
-          text: `🔨 Auction Hammered! @${winner.username} won ${tile.name} for $${auc.highBid}!`
+          text: `@${winner.username} won ${tile.name} at auction for $${auc.highBid}!`
         });
       }
       room.activeAuction = null;
@@ -2276,10 +2265,15 @@ function syncTradeAndAuctionModals(room) {
 }
 
 // ============================================================================
-// 11. EVENT LISTENERS & INITIALIZATION ON LOAD
+// 11. EVENT LISTENERS ON LOAD
 // ============================================================================
 window.addEventListener('DOMContentLoaded', async () => {
   renderAuthTokenPicker();
+
+  // Top-Right DB Status Button diagnostic click
+  document.getElementById('btnDbStatus').addEventListener('click', () => {
+    showToast(dbDiagnosticMessage, isCloudConnected ? 'emerald' : 'rose');
+  });
 
   document.getElementById('tabAuthRegister').addEventListener('click', () => setAuthTab('register'));
   document.getElementById('tabAuthLogin').addEventListener('click', () => setAuthTab('login'));
