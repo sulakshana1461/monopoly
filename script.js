@@ -16,6 +16,11 @@ const MY_FIREBASE_CONFIG = {
 };
 
 // ============================================================================
+// KEEP YOUR EXISTING IMPORTS & MY_FIREBASE_CONFIG AT THE TOP OF script.js!
+// Replace everything BELOW MY_FIREBASE_CONFIG with the code below:
+// ============================================================================
+
+// ============================================================================
 // 1. CLASSIC 40-TILE MONOPOLY BOARD DEFINITION
 // ============================================================================
 const GROUP_COLORS = {
@@ -222,7 +227,6 @@ function updateDbIndicator(status, labelText, diagnosticDetail) {
   }
 }
 
-// Non-blocking Firestore write helper so UI never hangs
 async function safeCloudWrite(writePromise, contextLabel) {
   if (!isCloudConnected || !db) return;
   try {
@@ -267,10 +271,8 @@ async function initDatabaseAndAuth() {
     currentUser = { uid: 'user-' + Math.random().toString(36).slice(2, 9) };
     isCloudConnected = true;
 
-    // Start listeners immediately
     setupRealtimeListeners(firebaseConfig.projectId);
 
-    // Optional background anonymous auth (non-blocking)
     try {
       auth = getAuth(app);
       signInAnonymously(auth).then((cred) => {
@@ -278,7 +280,6 @@ async function initDatabaseAndAuth() {
       }).catch(() => {});
     } catch (e) {}
 
-    // 5-second timeout check if Firestore hasn't responded yet
     setTimeout(() => {
       if (!hasReceivedFirstSnapshot && isCloudConnected) {
         updateDbIndicator(
@@ -304,7 +305,7 @@ function setupRealtimeListeners(projectId) {
     hasReceivedFirstSnapshot = true;
     const nextMap = {};
     snap.forEach((d) => { nextMap[d.id] = d.data(); });
-    registeredUsersMap = { ...registeredUsersMap, ...nextMap };
+    registeredUsersMap = nextMap;
     renderRegisteredUsersDirectory();
     updateDbIndicator(
       'connected',
@@ -329,8 +330,20 @@ function setupRealtimeListeners(projectId) {
         nextRooms[d.id] = normalizeRoomData(data);
       }
     });
-    allRoomsMap = { ...allRoomsMap, ...nextRooms };
+    allRoomsMap = nextRooms;
+
+    // If the active room was deleted by the host, return players to the lobby
+    if (currentRoomId && !allRoomsMap[currentRoomId]) {
+      currentRoomId = null;
+      document.getElementById('navRoomBadge').classList.add('hidden');
+      if (myAccount) {
+        showViewSection('lobby');
+        showToast('The room was deleted by the host.', 'amber');
+      }
+    }
+
     renderLobbyViews();
+    renderIncomingInvites();
     if (currentRoomId && allRoomsMap[currentRoomId]) {
       syncActiveRoomUI(allRoomsMap[currentRoomId]);
     }
@@ -339,34 +352,41 @@ function setupRealtimeListeners(projectId) {
   onSnapshot(colInvites(), (snap) => {
     const nextInvites = {};
     snap.forEach((d) => { nextInvites[d.id] = d.data(); });
-    allInvitesMap = { ...allInvitesMap, ...nextInvites };
+    allInvitesMap = nextInvites;
     renderIncomingInvites();
   }, (err) => console.error("Invites listener error:", err));
 }
 
+// FIXED: Delete *Json strings after unpacking so they never overwrite local array updates!
 function normalizeRoomData(raw) {
   const room = { ...raw };
   if (typeof room.playersJson === 'string') {
     try { room.players = JSON.parse(room.playersJson); } catch (e) { room.players = []; }
+    delete room.playersJson;
   }
   if (typeof room.propertiesJson === 'string') {
     try { room.properties = JSON.parse(room.propertiesJson); } catch (e) { room.properties = {}; }
+    delete room.propertiesJson;
   }
   if (typeof room.logsJson === 'string') {
     try { room.logs = JSON.parse(room.logsJson); } catch (e) { room.logs = []; }
+    delete room.logsJson;
   }
   if (typeof room.activeTradeJson === 'string') {
     try { room.activeTrade = JSON.parse(room.activeTradeJson); } catch (e) { room.activeTrade = null; }
+    delete room.activeTradeJson;
   }
   if (typeof room.activeAuctionJson === 'string') {
     try { room.activeAuction = JSON.parse(room.activeAuctionJson); } catch (e) { room.activeAuction = null; }
+    delete room.activeAuctionJson;
   }
   if (typeof room.pendingDebtJson === 'string') {
     try { room.pendingDebt = JSON.parse(room.pendingDebtJson); } catch (e) { room.pendingDebt = null; }
+    delete room.pendingDebtJson;
   }
-  room.players = room.players || [];
-  room.properties = room.properties || {};
-  room.logs = room.logs || [];
+  room.players = Array.isArray(room.players) ? room.players : [];
+  room.properties = (room.properties && typeof room.properties === 'object') ? room.properties : {};
+  room.logs = Array.isArray(room.logs) ? room.logs : [];
   return room;
 }
 
@@ -374,7 +394,6 @@ async function saveRoomState(room) {
   const normalized = normalizeRoomData(room);
   allRoomsMap[normalized.id] = normalized;
 
-  // Update UI immediately without waiting for network
   renderLobbyViews();
   if (currentRoomId === normalized.id) {
     syncActiveRoomUI(normalized);
@@ -403,7 +422,7 @@ async function saveRoomState(room) {
       activeAuctionJson: JSON.stringify(normalized.activeAuction || null),
       pendingDebtJson: JSON.stringify(normalized.pendingDebt || null)
     };
-    safeCloudWrite(
+    await safeCloudWrite(
       setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_rooms', normalized.id), payload),
       'saveRoomState'
     );
@@ -411,7 +430,7 @@ async function saveRoomState(room) {
 }
 
 // ============================================================================
-// 4. AUTHENTICATION & @USERNAME REGISTRATION LOGIC (FIXED TRANSITION)
+// 4. AUTHENTICATION & @USERNAME REGISTRATION LOGIC
 // ============================================================================
 function renderAuthTokenPicker() {
   const grid = document.getElementById('authTokenGrid');
@@ -502,12 +521,10 @@ async function handleAuthSubmit(e) {
     registeredUsersMap[rawUsername] = userRecord;
     myAccount = userRecord;
 
-    // 1. Transition to Lobby IMMEDIATELY so UI never freezes
     playSfx('buy');
     showToast(`Signed in as @${rawUsername}`, 'emerald');
     enterAuthenticatedState();
 
-    // 2. Save to Firebase in the background
     if (isCloudConnected && db) {
       safeCloudWrite(
         setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_users', rawUsername), userRecord),
@@ -541,7 +558,6 @@ function showViewSection(viewName) {
   const vLobby = document.getElementById('viewLobby');
   const vGame = document.getElementById('viewGame');
 
-  // Hide all first
   vAuth.classList.add('hidden');
   vAuth.classList.remove('flex');
   vLobby.classList.add('hidden');
@@ -586,14 +602,15 @@ function enterAuthenticatedState() {
 }
 
 // ============================================================================
-// 5. LOBBY, ROOM CREATION & @USERNAME INVITATION SYSTEM
+// 5. LOBBY, ROOM CREATION, JOINING & ROOM DELETION SYSTEM
 // ============================================================================
 function createPlayerSeatObject(acc, seatIdx, startingCash, isSimulated = false) {
-  const tok = PLAYER_TOKENS[seatIdx % PLAYER_TOKENS.length];
+  const preferredTok = acc.token ? PLAYER_TOKENS.find(t => t.id === acc.token) : null;
+  const tok = preferredTok || PLAYER_TOKENS[seatIdx % PLAYER_TOKENS.length];
   return {
     id: acc.username,
     username: acc.username,
-    displayName: acc.displayName,
+    displayName: acc.displayName || acc.username,
     token: tok.id,
     emoji: tok.emoji,
     color: tok.color,
@@ -643,9 +660,49 @@ async function handleCreateRoom(e) {
   };
 
   currentRoomId = roomId;
+  document.getElementById('inputRoomTitle').value = '';
   playSfx('buy');
   showToast(`Room "${title}" created!`, 'emerald');
   await saveRoomState(newRoom);
+}
+
+// NEW: Host can delete their room from Firestore & clean up invites
+async function deleteRoomById(roomId) {
+  if (!myAccount) return;
+  const room = allRoomsMap[roomId];
+  if (!room) return;
+
+  if (room.hostUsername !== myAccount.username) {
+    showToast('Only the room creator (@' + room.hostUsername + ') can delete this room.', 'rose');
+    return;
+  }
+
+  delete allRoomsMap[roomId];
+  if (currentRoomId === roomId) {
+    currentRoomId = null;
+    document.getElementById('navRoomBadge').classList.add('hidden');
+    showViewSection('lobby');
+  }
+
+  renderLobbyViews();
+  showToast(`Room "${room.title}" deleted.`, 'amber');
+
+  if (isCloudConnected && db) {
+    await safeCloudWrite(
+      deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_rooms', roomId)),
+      'deleteRoom'
+    );
+    // Clean up any invites associated with this room
+    Object.values(allInvitesMap).forEach((inv) => {
+      if (inv.roomId === roomId) {
+        delete allInvitesMap[inv.id];
+        safeCloudWrite(
+          deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_invites', inv.id)),
+          'deleteRoomInvite'
+        );
+      }
+    });
+  }
 }
 
 async function sendUsernameInvite(targetUsernameRaw) {
@@ -683,7 +740,7 @@ async function sendUsernameInvite(targetUsernameRaw) {
   showToast(`Invite sent to @${cleanUser}`, 'emerald');
 
   if (isCloudConnected && db) {
-    safeCloudWrite(
+    await safeCloudWrite(
       setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_invites', inviteId), inviteObj),
       'sendInvite'
     );
@@ -726,9 +783,29 @@ async function addHotseatSimulatedPlayer() {
   await saveRoomState(room);
 }
 
+// FIXED: Fetches latest room state from Firestore and properly saves new player seat
 async function joinRoomById(roomId) {
-  if (!myAccount || !allRoomsMap[roomId]) return;
-  const room = allRoomsMap[roomId];
+  if (!myAccount) return;
+
+  let room = allRoomsMap[roomId];
+
+  // Fetch freshest room snapshot from Firestore so we never overwrite another player
+  if (isCloudConnected && db) {
+    try {
+      const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_rooms', roomId));
+      if (snap.exists()) {
+        room = normalizeRoomData(snap.data());
+        allRoomsMap[roomId] = room;
+      }
+    } catch (e) {
+      console.warn("Could not fetch fresh room doc, using cached room:", e);
+    }
+  }
+
+  if (!room) {
+    showToast('This room no longer exists.', 'rose');
+    return;
+  }
 
   const alreadyIn = room.players.some(p => p.username === myAccount.username);
   if (!alreadyIn) {
@@ -745,6 +822,7 @@ async function joinRoomById(roomId) {
     });
   }
 
+  // Remove the invite once accepted
   const invId = `inv_${roomId}_${myAccount.username}`;
   if (allInvitesMap[invId]) {
     delete allInvitesMap[invId];
@@ -759,7 +837,9 @@ async function joinRoomById(roomId) {
 
   currentRoomId = roomId;
   playSfx('buy');
+  showToast(`Joined room "${room.title}"!`, 'emerald');
   await saveRoomState(room);
+  syncActiveRoomUI(room);
 }
 
 async function startRoomBoardGame() {
@@ -846,10 +926,10 @@ function renderIncomingInvites() {
     <div class="p-3 rounded-lg bg-slate-900 border border-emerald-500/40 flex items-center justify-between gap-2">
       <div>
         <div class="text-xs font-bold text-white">${inv.roomTitle}</div>
-        <div class="text-[11px] text-slate-300">From @${inv.fromUsername}</div>
+        <div class="text-[11px] text-slate-300">Invited by @${inv.fromUsername}</div>
       </div>
       <button data-room="${inv.roomId}" class="btn-accept-invite px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition">
-        Join
+        Accept & Join
       </button>
     </div>
   `).join('');
@@ -874,6 +954,7 @@ function renderLobbyViews() {
   } else {
     listEl.innerHTML = rooms.map(r => {
       const isMember = myAccount && r.players.some(p => p.username === myAccount.username);
+      const isHost = myAccount && r.hostUsername === myAccount.username;
       const statusBadge = r.status === 'waiting'
         ? `<span class="text-[10px] px-2 py-0.5 rounded bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 font-semibold">Waiting</span>`
         : `<span class="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">Turn #${r.turnNumber || 1}</span>`;
@@ -889,10 +970,20 @@ function renderLobbyViews() {
             <div class="text-xs text-slate-400 mt-1">
               Host: <strong class="text-slate-200">@${r.hostUsername}</strong> • Players: <strong class="text-white">${r.players.length}/8</strong>
             </div>
+            <div class="flex flex-wrap gap-1 mt-1.5">
+              ${r.players.map(p => `<span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">${p.emoji} @${p.username}</span>`).join('')}
+            </div>
           </div>
-          <button data-room="${r.id}" class="btn-join-room px-4 py-2 rounded-lg font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white transition">
-            ${isMember ? 'Return to Game' : 'Join Room'}
-          </button>
+          <div class="flex items-center gap-2">
+            <button data-room="${r.id}" class="btn-join-room px-4 py-2 rounded-lg font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white transition">
+              ${isMember ? 'Open Room' : 'Join Room'}
+            </button>
+            ${isHost ? `
+              <button data-delete-room="${r.id}" class="btn-delete-room px-3 py-2 rounded-lg font-bold text-xs bg-red-600/20 hover:bg-red-600/35 text-red-300 border border-red-500/40 transition" title="Delete this room">
+                <i class="fa-solid fa-trash"></i> Delete
+              </button>
+            ` : ''}
+          </div>
         </div>
       `;
     }).join('');
@@ -900,15 +991,30 @@ function renderLobbyViews() {
     listEl.querySelectorAll('.btn-join-room').forEach(btn => {
       btn.addEventListener('click', () => joinRoomById(btn.dataset.room));
     });
+
+    listEl.querySelectorAll('.btn-delete-room').forEach(btn => {
+      btn.addEventListener('click', () => deleteRoomById(btn.dataset.deleteRoom));
+    });
   }
 
   const stagingPanel = document.getElementById('panelRoomStaging');
   if (currentRoomId && allRoomsMap[currentRoomId] && allRoomsMap[currentRoomId].status === 'waiting') {
     const room = allRoomsMap[currentRoomId];
+    const isHost = myAccount && room.hostUsername === myAccount.username;
     stagingPanel.classList.remove('hidden');
     document.getElementById('stagingRoomTitle').textContent = room.title;
     document.getElementById('stagingRoomCode').textContent = `ROOM CODE: ${room.code}`;
-    document.getElementById('stagingSeatCounter').textContent = `${room.players.length} / 8 Players`;
+
+    // Show player count + Delete Room button for the host
+    const seatCounterEl = document.getElementById('stagingSeatCounter');
+    seatCounterEl.innerHTML = `
+      <span>${room.players.length} / 8 Players</span>
+      ${isHost ? `<button id="btnDeleteStagingRoom" type="button" class="ml-3 px-2.5 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition"><i class="fa-solid fa-trash mr-1"></i>Delete Room</button>` : ''}
+    `;
+    const btnDelStage = document.getElementById('btnDeleteStagingRoom');
+    if (btnDelStage) {
+      btnDelStage.onclick = () => deleteRoomById(room.id);
+    }
 
     const slotsHtml = [];
     for (let i = 0; i < 8; i++) {
