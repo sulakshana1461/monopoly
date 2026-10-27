@@ -2325,14 +2325,12 @@ function openTradeHubModal(room, defaultPartnerUsername = null) {
   const selFrom = document.getElementById('selectTradeFromPlayer');
   const selTo = document.getElementById('selectTradeToPlayer');
 
-  // Player 1 Offers is permanently locked to YOU
   const defaultFrom = myAccount.username;
   const fromChoices = activePlayers.filter(p => p.username === defaultFrom);
   
   selFrom.innerHTML = fromChoices.map(p => `<option value="${p.username}" selected>@${p.username} (You)</option>`).join('');
   selFrom.disabled = true;
 
-  // Player 2 Gives is everyone EXCEPT you
   const toChoices = activePlayers.filter(p => p.username !== defaultFrom);
   if (toChoices.length === 0) return;
 
@@ -2363,17 +2361,38 @@ function openTradeHubModal(room, defaultPartnerUsername = null) {
     const offerCardsInput = document.getElementById('inputTradeOfferCards');
     const reqCardsInput = document.getElementById('inputTradeRequestCards');
 
-    // Reset values to 0
+    // Set absolute min/max limits on the HTML elements
+    offerCashInput.min = 0; offerCashInput.max = fromCash;
+    reqCashInput.min = 0; reqCashInput.max = toCash;
+    offerCardsInput.min = 0; offerCardsInput.max = Math.min(2, fromCards);
+    reqCardsInput.min = 0; reqCardsInput.max = Math.min(2, toCards);
+    
     offerCashInput.value = '0';
     reqCashInput.value = '0';
     offerCardsInput.value = '0';
     reqCardsInput.value = '0';
 
-    // UI strict limit enforcement (prevents typing higher numbers)
-    offerCashInput.oninput = () => { if (parseInt(offerCashInput.value || 0) > fromCash) offerCashInput.value = fromCash; };
-    reqCashInput.oninput = () => { if (parseInt(reqCashInput.value || 0) > toCash) reqCashInput.value = toCash; };
-    offerCardsInput.oninput = () => { if (parseInt(offerCardsInput.value || 0) > fromCards) offerCardsInput.value = fromCards; };
-    reqCardsInput.oninput = () => { if (parseInt(reqCardsInput.value || 0) > toCards) reqCardsInput.value = toCards; };
+    // Prevent typing negative numbers or numbers higher than allowed immediately
+    offerCashInput.oninput = () => { 
+      let val = parseInt(offerCashInput.value) || 0;
+      if (val < 0) offerCashInput.value = 0;
+      if (val > fromCash) offerCashInput.value = fromCash;
+    };
+    reqCashInput.oninput = () => { 
+      let val = parseInt(reqCashInput.value) || 0;
+      if (val < 0) reqCashInput.value = 0;
+      if (val > toCash) reqCashInput.value = toCash;
+    };
+    offerCardsInput.oninput = () => { 
+      let val = parseInt(offerCardsInput.value) || 0;
+      if (val < 0) offerCardsInput.value = 0;
+      if (val > Math.min(2, fromCards)) offerCardsInput.value = Math.min(2, fromCards);
+    };
+    reqCardsInput.oninput = () => { 
+      let val = parseInt(reqCardsInput.value) || 0;
+      if (val < 0) reqCardsInput.value = 0;
+      if (val > Math.min(2, toCards)) reqCardsInput.value = Math.min(2, toCards);
+    };
 
     const fromProps = BOARD_TILES.filter(t => room.properties[t.id]?.owner === fromUser && (room.properties[t.id]?.houses || 0) === 0);
     const toProps = BOARD_TILES.filter(t => room.properties[t.id]?.owner === toUser && (room.properties[t.id]?.houses || 0) === 0);
@@ -2406,7 +2425,6 @@ function openTradeHubModal(room, defaultPartnerUsername = null) {
   document.getElementById('tradeModalError').classList.add('hidden');
   modal.classList.remove('hidden');
 }
-
 async function submitTradeProposal() {
   if (!currentRoomId || !allRoomsMap[currentRoomId]) return;
   const room = allRoomsMap[currentRoomId];
@@ -2423,26 +2441,36 @@ async function submitTradeProposal() {
   const fromPlayer = room.players.find(p => p.username === fromUser);
   const toPlayer = room.players.find(p => p.username === toUser);
 
-  // The "|| 0" prevents NaN crashes if someone leaves the box empty
-  const offerCash = Math.max(0, parseInt(document.getElementById('inputTradeOfferCash').value, 10) || 0);
-  const requestCash = Math.max(0, parseInt(document.getElementById('inputTradeRequestCash').value, 10) || 0);
-  const offerCards = Math.max(0, parseInt(document.getElementById('inputTradeOfferCards').value, 10) || 0);
-  const requestCards = Math.max(0, parseInt(document.getElementById('inputTradeRequestCards').value, 10) || 0);
+  // Parse raw inputs
+  const rawOfferCash = parseInt(document.getElementById('inputTradeOfferCash').value, 10);
+  const rawReqCash = parseInt(document.getElementById('inputTradeRequestCash').value, 10);
+  const rawOfferCards = parseInt(document.getElementById('inputTradeOfferCards').value, 10);
+  const rawReqCards = parseInt(document.getElementById('inputTradeRequestCards').value, 10);
 
-  if (offerCash > fromPlayer.money || requestCash > toPlayer.money) {
-    errBox.textContent = 'Cash amount exceeds player balance.';
+  const offerCash = isNaN(rawOfferCash) ? 0 : rawOfferCash;
+  const requestCash = isNaN(rawReqCash) ? 0 : rawReqCash;
+  const offerCards = isNaN(rawOfferCards) ? 0 : rawOfferCards;
+  const requestCards = isNaN(rawReqCards) ? 0 : rawReqCards;
+
+  // Validate Cash
+  if (offerCash < 0 || requestCash < 0 || offerCash > fromPlayer.money || requestCash > toPlayer.money) {
+    errBox.textContent = 'Invalid number error: Cash amount exceeds player balance or is invalid.';
     errBox.classList.remove('hidden');
     return;
   }
 
-  // STRICT VALIDATION: Blocks trade if they request more cards than exist
-  if (offerCards > (fromPlayer.jailFreeCards || 0)) {
-    errBox.textContent = `You only have ${fromPlayer.jailFreeCards || 0} Get Out of Jail card(s).`;
+  // STRICT JAIL CARD VALIDATION: Checks against 0, 2, and the player's true balance
+  const fromCards = fromPlayer.jailFreeCards || 0;
+  const toCards = toPlayer.jailFreeCards || 0;
+
+  if (offerCards < 0 || offerCards > 2 || offerCards > fromCards) {
+    errBox.textContent = 'Invalid number error';
     errBox.classList.remove('hidden');
     return;
   }
-  if (requestCards > (toPlayer.jailFreeCards || 0)) {
-    errBox.textContent = `@${toPlayer.username} only has ${toPlayer.jailFreeCards || 0} Get Out of Jail card(s).`;
+
+  if (requestCards < 0 || requestCards > 2 || requestCards > toCards) {
+    errBox.textContent = 'Invalid number error';
     errBox.classList.remove('hidden');
     return;
   }
@@ -2477,7 +2505,6 @@ async function submitTradeProposal() {
   playSfx('trade');
   await saveRoomState(room);
 }
-
 async function executeAcceptActiveTrade(room) {
   const tr = room.activeTrade;
   if (!tr) return;
