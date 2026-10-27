@@ -2325,12 +2325,14 @@ function openTradeHubModal(room, defaultPartnerUsername = null) {
   const selFrom = document.getElementById('selectTradeFromPlayer');
   const selTo = document.getElementById('selectTradeToPlayer');
 
+  // Player 1 Offers is permanently locked to YOU
   const defaultFrom = myAccount.username;
   const fromChoices = activePlayers.filter(p => p.username === defaultFrom);
   
   selFrom.innerHTML = fromChoices.map(p => `<option value="${p.username}" selected>@${p.username} (You)</option>`).join('');
   selFrom.disabled = true;
 
+  // Player 2 Gives is everyone EXCEPT you
   const toChoices = activePlayers.filter(p => p.username !== defaultFrom);
   if (toChoices.length === 0) return;
 
@@ -2346,15 +2348,32 @@ function openTradeHubModal(room, defaultPartnerUsername = null) {
     const fromObj = room.players.find(p => p.username === fromUser);
     const toObj = room.players.find(p => p.username === toUser);
 
-    document.getElementById('tradeFromMaxCash').textContent = `$${fromObj ? fromObj.money : 0}`;
-    document.getElementById('tradeToMaxCash').textContent = `$${toObj ? toObj.money : 0}`;
-    document.getElementById('tradeFromMaxCards').textContent = String(fromObj?.jailFreeCards || 0);
-    document.getElementById('tradeToMaxCards').textContent = String(toObj?.jailFreeCards || 0);
+    const fromCash = fromObj ? fromObj.money : 0;
+    const toCash = toObj ? toObj.money : 0;
+    const fromCards = fromObj ? (fromObj.jailFreeCards || 0) : 0;
+    const toCards = toObj ? (toObj.jailFreeCards || 0) : 0;
 
-    document.getElementById('inputTradeOfferCash').value = '0';
-    document.getElementById('inputTradeRequestCash').value = '0';
-    document.getElementById('inputTradeOfferCards').value = '0';
-    document.getElementById('inputTradeRequestCards').value = '0';
+    document.getElementById('tradeFromMaxCash').textContent = `$${fromCash}`;
+    document.getElementById('tradeToMaxCash').textContent = `$${toCash}`;
+    document.getElementById('tradeFromMaxCards').textContent = String(fromCards);
+    document.getElementById('tradeToMaxCards').textContent = String(toCards);
+
+    const offerCashInput = document.getElementById('inputTradeOfferCash');
+    const reqCashInput = document.getElementById('inputTradeRequestCash');
+    const offerCardsInput = document.getElementById('inputTradeOfferCards');
+    const reqCardsInput = document.getElementById('inputTradeRequestCards');
+
+    // Reset values to 0
+    offerCashInput.value = '0';
+    reqCashInput.value = '0';
+    offerCardsInput.value = '0';
+    reqCardsInput.value = '0';
+
+    // UI strict limit enforcement (prevents typing higher numbers)
+    offerCashInput.oninput = () => { if (parseInt(offerCashInput.value || 0) > fromCash) offerCashInput.value = fromCash; };
+    reqCashInput.oninput = () => { if (parseInt(reqCashInput.value || 0) > toCash) reqCashInput.value = toCash; };
+    offerCardsInput.oninput = () => { if (parseInt(offerCardsInput.value || 0) > fromCards) offerCardsInput.value = fromCards; };
+    reqCardsInput.oninput = () => { if (parseInt(reqCardsInput.value || 0) > toCards) reqCardsInput.value = toCards; };
 
     const fromProps = BOARD_TILES.filter(t => room.properties[t.id]?.owner === fromUser && (room.properties[t.id]?.houses || 0) === 0);
     const toProps = BOARD_TILES.filter(t => room.properties[t.id]?.owner === toUser && (room.properties[t.id]?.houses || 0) === 0);
@@ -2404,6 +2423,7 @@ async function submitTradeProposal() {
   const fromPlayer = room.players.find(p => p.username === fromUser);
   const toPlayer = room.players.find(p => p.username === toUser);
 
+  // The "|| 0" prevents NaN crashes if someone leaves the box empty
   const offerCash = Math.max(0, parseInt(document.getElementById('inputTradeOfferCash').value, 10) || 0);
   const requestCash = Math.max(0, parseInt(document.getElementById('inputTradeRequestCash').value, 10) || 0);
   const offerCards = Math.max(0, parseInt(document.getElementById('inputTradeOfferCards').value, 10) || 0);
@@ -2411,6 +2431,18 @@ async function submitTradeProposal() {
 
   if (offerCash > fromPlayer.money || requestCash > toPlayer.money) {
     errBox.textContent = 'Cash amount exceeds player balance.';
+    errBox.classList.remove('hidden');
+    return;
+  }
+
+  // STRICT VALIDATION: Blocks trade if they request more cards than exist
+  if (offerCards > (fromPlayer.jailFreeCards || 0)) {
+    errBox.textContent = `You only have ${fromPlayer.jailFreeCards || 0} Get Out of Jail card(s).`;
+    errBox.classList.remove('hidden');
+    return;
+  }
+  if (requestCards > (toPlayer.jailFreeCards || 0)) {
+    errBox.textContent = `@${toPlayer.username} only has ${toPlayer.jailFreeCards || 0} Get Out of Jail card(s).`;
     errBox.classList.remove('hidden');
     return;
   }
@@ -2519,11 +2551,13 @@ function syncTradeAndAuctionModals(room) {
         <div class="p-3 rounded-lg bg-slate-900 border border-slate-700 space-y-1.5">
           <div class="text-xs font-bold text-emerald-400">@${tr.from} Offers:</div>
           <div class="text-sm font-bold text-white">$${tr.offerCash} Cash</div>
+          ${tr.offerCards > 0 ? `<div class="text-xs font-bold text-blue-400">${tr.offerCards}x Get Out of Jail Card</div>` : ''}
           <div class="space-y-1 pt-1 border-t border-slate-800">${formatProps(tr.offerProps)}</div>
         </div>
         <div class="p-3 rounded-lg bg-slate-900 border border-slate-700 space-y-1.5">
           <div class="text-xs font-bold text-sky-400">@${tr.to} Gives:</div>
           <div class="text-sm font-bold text-white">$${tr.requestCash} Cash</div>
+          ${tr.requestCards > 0 ? `<div class="text-xs font-bold text-blue-400">${tr.requestCards}x Get Out of Jail Card</div>` : ''}
           <div class="space-y-1 pt-1 border-t border-slate-800">${formatProps(tr.requestProps)}</div>
         </div>
       `;
@@ -2532,7 +2566,7 @@ function syncTradeAndAuctionModals(room) {
         <button id="btnDeclineTradeOffer" class="px-4 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 font-bold text-xs">
           Decline
         </button>
-        <button id="btnAcceptTradeOffer" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-50 text-white font-bold text-xs shadow">
+        <button id="btnAcceptTradeOffer" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow">
           Accept Trade
         </button>
       `;
@@ -2546,7 +2580,9 @@ function syncTradeAndAuctionModals(room) {
     tradeModal.classList.add('hidden');
   }
 
+  // AUCTION MODAL LOGIC & LIVE TIMER
   const auctionModal = document.getElementById('modalAuction');
+  
   if (globalAuctionInterval) {
     clearInterval(globalAuctionInterval);
     globalAuctionInterval = null;
@@ -2600,9 +2636,10 @@ function syncTradeAndAuctionModals(room) {
           room.activeAuction.highBidder = btn.dataset.user;
           room.activeAuction.highBid = parseInt(btn.dataset.bid, 10);
           
+          // Anti-Snipe: Pushes clock back up to 10 seconds if a bid is placed right at the end
           const now = Date.now();
-          if (room.activeAuction.endTime - now < 30000) {
-            room.activeAuction.endTime = now + 30000;
+          if (room.activeAuction.endTime - now < 10000) {
+            room.activeAuction.endTime = now + 10000;
           }
 
           playSfx('cash');
@@ -2618,7 +2655,7 @@ function syncTradeAndAuctionModals(room) {
       btnFinalize.classList.remove('hover:bg-emerald-500');
 
       const isHost = myAccount && room.hostUsername === myAccount.username;
-      const endTime = auc.endTime || (Date.now() + 60000);
+      const endTime = auc.endTime || (Date.now() + 30000);
 
       globalAuctionInterval = setInterval(() => {
         const timeLeft = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
@@ -2629,6 +2666,7 @@ function syncTradeAndAuctionModals(room) {
           btnFinalize.textContent = `Awarding...`;
           clearInterval(globalAuctionInterval);
           
+          // Only the Host fires the actual DB update so we don't spam the server
           if (isHost && room.activeAuction) {
             const winner = room.players.find(p => p.username === auc.highBidder);
             if (winner && winner.money >= auc.highBid) {
