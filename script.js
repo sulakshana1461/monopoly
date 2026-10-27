@@ -2314,13 +2314,14 @@ async function executeVoteEndGame(room) {
   const activePlayers = (room.players || []).filter(p => !p.bankrupt);
   if (activePlayers.length < 2) return;
 
+  // Added a 60-second expiration timer to the vote
   room.activeEndVote = {
     initiator: myAccount.username,
     yesVotes: [myAccount.username],
-    noVotes: []
+    noVotes: [],
+    expiresAt: Date.now() + 60000 
   };
 
-  // Bots automatically vote yes
   activePlayers.forEach(p => {
     if (p.isSimulated && !room.activeEndVote.yesVotes.includes(p.username)) {
       room.activeEndVote.yesVotes.push(p.username);
@@ -2328,7 +2329,7 @@ async function executeVoteEndGame(room) {
   });
 
   if (!room.logs) room.logs = [];
-  room.logs.unshift({ time: Date.now(), text: `@${myAccount.username} called a vote to end the game early.` });
+  room.logs.unshift({ time: Date.now(), text: `@${myAccount.username} called a vote to end the game (60s to decide).` });
   
   playSfx('jail');
   await saveRoomState(room);
@@ -2336,6 +2337,16 @@ async function executeVoteEndGame(room) {
 
 async function submitVoteDecision(room, isYes) {
   if (!myAccount || !room.activeEndVote) return;
+
+  // Instantly kill the vote if it took longer than 60 seconds
+  if (Date.now() > room.activeEndVote.expiresAt) {
+    room.activeEndVote = null;
+    if (!room.logs) room.logs = [];
+    room.logs.unshift({ time: Date.now(), text: `The vote to end the game expired and was reset.` });
+    await saveRoomState(room);
+    return;
+  }
+
   const username = myAccount.username;
   
   if (isYes && !room.activeEndVote.yesVotes.includes(username)) {
@@ -2345,9 +2356,13 @@ async function submitVoteDecision(room, isYes) {
   }
 
   const activePlayers = (room.players || []).filter(p => !p.bankrupt);
-  const votesNeeded = Math.floor(activePlayers.length / 2) + 1;
+  const totalActive = activePlayers.length;
+  
+  // Math check: calculate exactly how many votes are needed to pass or fail
+  const votesNeededForYes = Math.floor(totalActive / 2) + 1;
+  const votesNeededForNo = totalActive - votesNeededForYes + 1; 
 
-  if (room.activeEndVote.yesVotes.length >= votesNeeded) {
+  if (room.activeEndVote.yesVotes.length >= votesNeededForYes) {
     room.status = 'finished';
     room.activeEndVote = null;
     
@@ -2360,10 +2375,12 @@ async function submitVoteDecision(room, isYes) {
     if (!room.logs) room.logs = [];
     room.logs.unshift({ time: Date.now(), text: `Majority voted YES! @${rankedPlayers[0].username} wins by Net Worth!` });
     playSfx('trade');
-  } else if (room.activeEndVote.noVotes.length >= votesNeeded) {
+  } 
+  else if (room.activeEndVote.noVotes.length >= votesNeededForNo) {
+    // Kills the vote and resets the button if the majority chooses to continue
     if (!room.logs) room.logs = [];
-    room.logs.unshift({ time: Date.now(), text: `The vote to end the game was rejected.` });
-    room.activeEndVote = null;
+    room.logs.unshift({ time: Date.now(), text: `The vote to end the game failed (Majority rejected).` });
+    room.activeEndVote = null; 
   }
   
   await saveRoomState(room);
@@ -2396,6 +2413,11 @@ function syncEndGameVoteModal(room) {
     };
   }
 
+  // Auto-hide popup if the vote expired in the background
+  if (room.activeEndVote && Date.now() > room.activeEndVote.expiresAt) {
+    room.activeEndVote = null;
+  }
+
   if (room.activeEndVote && myAccount) {
     const hasVoted = room.activeEndVote.yesVotes.includes(myAccount.username) || room.activeEndVote.noVotes.includes(myAccount.username);
     const amIPlaying = (room.players || []).some(p => p.username === myAccount.username && !p.bankrupt);
@@ -2416,6 +2438,11 @@ function buildCenterCommandHubHtml(room) {
   const currentTile = BOARD_TILES[activePlayer.position || 0];
   const d1 = room.lastDice ? room.lastDice[0] : 6;
   const d2 = room.lastDice ? room.lastDice[1] : 6;
+
+  // Clear broken UI if timer expired
+  if (room.activeEndVote && Date.now() > room.activeEndVote.expiresAt) {
+    room.activeEndVote = null;
+  }
 
   if (room.status === 'finished') {
     const activeSurvivors = (room.players || []).filter(p => !p.bankrupt);
@@ -2619,6 +2646,8 @@ function buildCenterCommandHubHtml(room) {
     </div>
   `;
 }
+
+
 
 function renderPortfolioSidebar(room) {
   const sel = document.getElementById('selectPortfolioPlayer');
