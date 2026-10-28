@@ -1115,7 +1115,6 @@ function renderMonopolyGrid(room) {
 
 
 
-
 function bindCenterHubEvents(room) {
   const btnRoll = document.getElementById('btnRollDice');
   if (btnRoll) btnRoll.addEventListener('click', () => executeDiceRoll(room));
@@ -1146,6 +1145,12 @@ function bindCenterHubEvents(room) {
 
   const btnVoteEnd = document.getElementById('btnVoteEndGame');
   if (btnVoteEnd) btnVoteEnd.addEventListener('click', () => executeVoteEndGame(room));
+
+  const btnResign = document.getElementById('btnOpenResign'); // <-- Added
+  if (btnResign) btnResign.addEventListener('click', () => {
+    const modal = document.getElementById('modalResignConfirm');
+    if (modal) modal.classList.remove('hidden');
+  });
 }
 
 // ============================================================================
@@ -2287,6 +2292,7 @@ function renderFullBoardGame(room) {
   renderActivityLog(room);
   syncTradeAndAuctionModals(room);
   syncEndGameVoteModal(room);
+  syncResignModal(room); // <-- Added
 }
 
 function calculateNetWorth(room, player) {
@@ -2576,6 +2582,11 @@ function buildCenterCommandHubHtml(room) {
     ? 'bg-red-200 border-red-300 text-red-700 opacity-75 cursor-not-allowed' 
     : 'bg-red-100 hover:bg-red-200 border-red-300 text-red-900 shadow-sm';
 
+  const amIPlaying = myAccount && (room.players || []).some(p => p.username === myAccount.username && !p.bankrupt);
+  const resignBtnHtml = amIPlaying 
+    ? `<button id="btnOpenResign" class="px-2 py-1.5 rounded font-bold text-[9px] uppercase border bg-red-50 hover:bg-red-100 border-red-300 text-red-800 transition shadow-sm" title="Resign and leave the game">Resign</button>`
+    : '';
+
   return `
     <div class="board-center">
       <div class="flex items-center justify-between gap-3">
@@ -2633,13 +2644,16 @@ function buildCenterCommandHubHtml(room) {
       </div>
 
       <div class="flex items-center justify-between gap-1.5 bg-white/90 border-2 border-slate-800 rounded-lg px-2 py-1.5">
-        <button id="btnVoteEndGame" ${voteActive ? 'disabled' : ''} class="px-2 py-1.5 rounded font-bold text-[10px] uppercase border transition ${endBtnClass}" title="End the game and calculate final Net Worth">
-          ${endBtnText}
-        </button>
-        <div class="text-[10px] font-semibold text-slate-600 text-center flex-1 leading-tight px-1">
+        <div class="flex gap-1.5">
+          <button id="btnVoteEndGame" ${voteActive ? 'disabled' : ''} class="px-2 py-1.5 rounded font-bold text-[9px] uppercase border transition ${endBtnClass}" title="End the game and calculate final Net Worth">
+            ${endBtnText}
+          </button>
+          ${resignBtnHtml}
+        </div>
+        <div class="text-[9px] font-semibold text-slate-600 text-center flex-1 leading-tight px-1 hidden sm:block">
           Click board properties to view Deeds or Build.
         </div>
-        <button id="btnCenterProposeTrade" class="px-3 py-1.5 rounded bg-amber-50 hover:bg-amber-100 border border-amber-500 text-amber-900 font-bold text-[11px] uppercase transition shadow-sm">
+        <button id="btnCenterProposeTrade" class="px-3 py-1.5 rounded bg-amber-50 hover:bg-amber-100 border border-amber-500 text-amber-900 font-bold text-[10px] uppercase transition shadow-sm">
           Trade Hub
         </button>
       </div>
@@ -2894,5 +2908,91 @@ function syncTradeAndAuctionModals(room) {
     }
   } else {
     auctionModal.classList.add('hidden');
+  }
+}
+
+// NEW FUNCTION: Builds and shows the confirmation popup
+function syncResignModal(room) {
+  let modal = document.getElementById('modalResignConfirm');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modalResignConfirm';
+    modal.className = 'fixed inset-0 z-[70] hidden bg-black/80 flex items-center justify-center p-4';
+    modal.innerHTML = `
+      <div class="bg-slate-800 border-2 border-red-500 rounded-xl max-w-sm w-full p-5 shadow-2xl text-center space-y-4">
+        <div class="text-4xl mb-2">🏳️</div>
+        <h3 class="text-lg font-bold text-white">Resign from Game?</h3>
+        <p class="text-sm font-semibold text-slate-300">Are you sure? All your properties will return to the bank, your debt will be cleared, and you will be eliminated.</p>
+        <div class="flex items-center justify-center gap-3 pt-3 border-t border-slate-700">
+          <button id="btnCancelResign" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs">Cancel</button>
+          <button id="btnConfirmResign" class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow">Yes, Resign</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    document.getElementById('btnCancelResign').onclick = () => {
+      document.getElementById('modalResignConfirm').classList.add('hidden');
+    };
+    document.getElementById('btnConfirmResign').onclick = async () => {
+      if (currentRoomId && allRoomsMap[currentRoomId]) {
+        await executeResign(allRoomsMap[currentRoomId]);
+      }
+    };
+  }
+}
+
+// NEW FUNCTION: The actual logic that fires when they click "Yes, Resign"
+async function executeResign(room) {
+  if (!myAccount) return;
+  const player = room.players.find(p => p.username === myAccount.username);
+  if (!player || player.bankrupt) return;
+
+  player.bankrupt = true;
+  player.money = 0;
+  player.jailFreeCards = 0;
+
+  // Return all their properties to the bank
+  Object.entries(room.properties).forEach(([tid, st]) => {
+    if (st.owner === player.username) {
+      delete room.properties[tid];
+    }
+  });
+
+  // Wipe the debt clean if they owed money
+  if (room.pendingDebt && room.pendingDebt.debtor === player.username) {
+    room.pendingDebt = null;
+    if (room.turnPhase === 'DEBT_RESOLUTION') {
+      room.turnPhase = 'POST_ROLL';
+    }
+  }
+
+  if (!room.logs) room.logs = [];
+  room.logs.unshift({
+    time: Date.now(),
+    text: `🏳️ @${player.username} has resigned! Their properties return to the Bank.`
+  });
+
+  playSfx('jail');
+  document.getElementById('modalResignConfirm').classList.add('hidden');
+
+  // Check if they were the second-to-last player (Trigger win)
+  const survivors = room.players.filter(p => !p.bankrupt);
+  if (survivors.length === 1) {
+    room.status = 'finished';
+    room.winnerName = `${survivors[0].displayName} (@${survivors[0].username})`;
+    room.logs.unshift({
+      time: Date.now(),
+      text: `GAME OVER! @${survivors[0].username} wins COPYPOLY!`
+    });
+    await saveRoomState(room);
+    return;
+  }
+
+  // If they resigned exactly on their turn, auto-skip to the next player
+  if (room.players[room.turnIndex].username === player.username) {
+    await executeEndTurn(room);
+  } else {
+    await saveRoomState(room);
   }
 }
