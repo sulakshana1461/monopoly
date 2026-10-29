@@ -785,22 +785,21 @@ async function startRoomBoardGame() {
     return;
   }
 
-  room.status = 'playing';
-  room.turnIndex = 0;
-  room.turnNumber = 1;
-  room.turnPhase = 'PRE_ROLL';
+  // Set up the pre-game dice rolling phase
+  room.status = 'rolling_order';
+  room.activeRollers = room.players.map(p => p.username);
+  room.orderRolls = {};
   room.endGameVotes = [];
   
   if (!room.logs) room.logs = [];
   room.logs.unshift({
     time: Date.now(),
-    text: `Game started with ${room.players.length} players! @${room.players[0].username} rolls first.`
+    text: `Rolling for initiative! Everyone roll your dice to see who goes first.`
   });
 
   playSfx('trade');
   await saveRoomState(room);
 }
-
 // ============================================================================
 // LOBBY RENDERING FUNCTIONS
 // ============================================================================
@@ -2238,9 +2237,22 @@ function normalizeRoomData(raw) {
     try { room.activeEndVote = JSON.parse(room.activeEndVoteJson); } catch (e) { room.activeEndVote = null; }
     delete room.activeEndVoteJson;
   }
+  // NEW: Pre-game Order Roll states
+  if (typeof room.orderRollsJson === 'string') {
+    try { room.orderRolls = JSON.parse(room.orderRollsJson); } catch (e) { room.orderRolls = {}; }
+    delete room.orderRollsJson;
+  }
+  if (typeof room.activeRollersJson === 'string') {
+    try { room.activeRollers = JSON.parse(room.activeRollersJson); } catch (e) { room.activeRollers = []; }
+    delete room.activeRollersJson;
+  }
+  
   room.players = Array.isArray(room.players) ? room.players : [];
   room.properties = (room.properties && typeof room.properties === 'object') ? room.properties : {};
   room.logs = Array.isArray(room.logs) ? room.logs : [];
+  room.endGameVotes = Array.isArray(room.endGameVotes) ? room.endGameVotes : [];
+  room.orderRolls = room.orderRolls || {};
+  room.activeRollers = Array.isArray(room.activeRollers) ? room.activeRollers : [];
   return room;
 }
 
@@ -2275,7 +2287,9 @@ async function saveRoomState(room) {
       activeTradeJson: JSON.stringify(normalized.activeTrade || null),
       activeAuctionJson: JSON.stringify(normalized.activeAuction || null),
       pendingDebtJson: JSON.stringify(normalized.pendingDebt || null),
-      activeEndVoteJson: JSON.stringify(normalized.activeEndVote || null)
+      activeEndVoteJson: JSON.stringify(normalized.activeEndVote || null),
+      orderRollsJson: JSON.stringify(normalized.orderRolls || {}),
+      activeRollersJson: JSON.stringify(normalized.activeRollers || [])
     };
     await safeCloudWrite(
       setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'copypoly_rooms', normalized.id), payload),
@@ -2292,7 +2306,8 @@ function renderFullBoardGame(room) {
   renderActivityLog(room);
   syncTradeAndAuctionModals(room);
   syncEndGameVoteModal(room);
-  syncResignModal(room); // <-- Added
+  syncResignModal(room);
+  syncOrderRollModal(room); // <-- Added
 }
 
 function calculateNetWorth(room, player) {
@@ -2994,5 +3009,144 @@ async function executeResign(room) {
     await executeEndTurn(room);
   } else {
     await saveRoomState(room);
+  }
+}
+
+// NEW FUNCTION: The "Who Goes First" Dice Rolling Screen
+function syncOrderRollModal(room) {
+  let modal = document.getElementById('modalOrderRoll');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modalOrderRoll';
+    modal.className = 'fixed inset-0 z-[65] hidden bg-slate-950 flex items-center justify-center p-4';
+    document.body.appendChild(modal);
+  }
+
+  if (room.status !== 'rolling_order') {
+    modal.classList.add('hidden');
+    return;
+  }
+
+  const isHost = myAccount && room.hostUsername === myAccount.username;
+  
+  // HOST AUTO-ROLLS FOR BOTS
+  if (isHost) {
+    let botsRolled = false;
+    (room.activeRollers || []).forEach(username => {
+      const p = room.players.find(x => x.username === username);
+      if (p && p.isSimulated && !(room.orderRolls || {})[username]) {
+        if (!room.orderRolls) room.orderRolls = {};
+        const d1 = Math.floor(Math.random() * 6) + 1;
+        const d2 = Math.floor(Math.random() * 6) + 1;
+        room.orderRolls[username] = { d1, d2, total: d1 + d2 };
+        botsRolled = true;
+      }
+    });
+    if (botsRolled) saveRoomState(room); 
+  }
+
+  modal.classList.remove('hidden');
+
+  const allRolled = (room.activeRollers || []).every(u => room.orderRolls && room.orderRolls[u]);
+  
+  // RENDER PLAYER LIST & THEIR ROLLS
+  let playersHtml = (room.activeRollers || []).map(u => {
+    const p = room.players.find(x => x.username === u);
+    const roll = room.orderRolls ? room.orderRolls[u] : null;
+    return `
+      <div class="p-3 rounded-xl bg-slate-800 border-2 border-slate-700 flex items-center justify-between mb-2 shadow-sm">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm" style="background:${p.color}30; border:2px solid ${p.color}">${p.emoji}</div>
+          <span class="font-bold text-white">@${u}</span>
+        </div>
+        <div>
+          ${roll 
+            ? `<span class="font-extrabold text-emerald-400 text-lg tracking-widest">[ ${roll.d1} ] [ ${roll.d2} ] = <span class="text-white ml-1">${roll.total}</span></span>` 
+            : `<span class="text-xs text-slate-400 font-semibold animate-pulse">Waiting to roll...</span>`}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // RENDER BOTTOM BUTTON (Roll or Confirm)
+  let actionHtml = '';
+  if (!allRolled) {
+    if (myAccount && (room.activeRollers || []).includes(myAccount.username) && !(room.orderRolls || {})[myAccount.username]) {
+      actionHtml = `<button id="btnOrderRollDice" class="px-6 py-3.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-extrabold text-lg shadow-lg transition w-full">🎲 ROLL DICE</button>`;
+    } else {
+      actionHtml = `<div class="p-3 rounded-lg bg-slate-900 border border-slate-700 text-center text-amber-400 font-bold text-sm shadow-inner">Waiting for others to roll...</div>`;
+    }
+  } else {
+    if (isHost) {
+      actionHtml = `<button id="btnConfirmOrderRoll" class="px-6 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-lg shadow-lg transition w-full">Confirm Results</button>`;
+    } else {
+      actionHtml = `<div class="p-3 rounded-lg bg-slate-900 border border-slate-700 text-center text-emerald-400 font-bold text-sm animate-pulse shadow-inner">Waiting for Host to resolve rolls...</div>`;
+    }
+  }
+
+  modal.innerHTML = `
+    <div class="bg-slate-900 border-4 border-slate-700 rounded-3xl max-w-sm w-full p-5 shadow-2xl flex flex-col max-h-[90vh]">
+      <div class="text-center mb-5 mt-2">
+        <h2 class="text-2xl font-black text-white tracking-wide uppercase">Who Goes First?</h2>
+        <p class="text-slate-400 text-xs mt-1">Highest roll starts. Ties will reroll.</p>
+      </div>
+      <div class="overflow-y-auto flex-1 pb-4">
+        ${playersHtml}
+      </div>
+      <div class="mt-auto pt-4 border-t border-slate-700">
+        ${actionHtml}
+      </div>
+    </div>
+  `;
+
+  // EVENT LISTENERS
+  const btnRoll = document.getElementById('btnOrderRollDice');
+  if (btnRoll) {
+    btnRoll.onclick = async () => {
+      if (!myAccount) return;
+      if (!room.orderRolls) room.orderRolls = {};
+      const d1 = Math.floor(Math.random() * 6) + 1;
+      const d2 = Math.floor(Math.random() * 6) + 1;
+      room.orderRolls[myAccount.username] = { d1, d2, total: d1 + d2 };
+      playSfx('dice');
+      await saveRoomState(room);
+    };
+  }
+
+  const btnConfirm = document.getElementById('btnConfirmOrderRoll');
+  if (btnConfirm) {
+    btnConfirm.onclick = async () => {
+      let maxTotal = -1;
+      room.activeRollers.forEach(u => {
+        if (room.orderRolls[u].total > maxTotal) maxTotal = room.orderRolls[u].total;
+      });
+      const tiedPlayers = room.activeRollers.filter(u => room.orderRolls[u].total === maxTotal);
+
+      if (tiedPlayers.length > 1) {
+        room.activeRollers = tiedPlayers; // Only tied players roll again
+        room.orderRolls = {};
+        if (!room.logs) room.logs = [];
+        room.logs.unshift({ time: Date.now(), text: `Tie for ${maxTotal}! Rerolling...` });
+        playSfx('jail');
+      } else {
+        const winner = tiedPlayers[0];
+        const winIdx = room.players.findIndex(p => p.username === winner);
+        
+        // This splits the array and puts the winner at the top, maintaining clockwise order!
+        room.players = [...room.players.slice(winIdx), ...room.players.slice(0, winIdx)];
+        
+        room.status = 'playing';
+        room.turnIndex = 0;
+        room.turnNumber = 1;
+        room.turnPhase = 'PRE_ROLL';
+        room.activeRollers = [];
+        room.orderRolls = {};
+        
+        if (!room.logs) room.logs = [];
+        room.logs.unshift({ time: Date.now(), text: `@${winner} rolled highest (${maxTotal}) and goes first!` });
+        playSfx('trade');
+      }
+      await saveRoomState(room);
+    };
   }
 }
