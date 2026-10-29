@@ -60,7 +60,7 @@ const BOARD_TILES = [
   { id: 20, name: 'Free Parking',          type: 'parking', price: 0,   icon: '🚗', sub: 'Free Parking' },
   { id: 21, name: 'Maradana',              type: 'prop',    group: 'red',       price: 220, houseCost: 150, rent: [18, 90, 250, 700, 875, 1050] },
   { id: 22, name: 'Chance',                type: 'chance',  price: 0,   icon: '❓' },
-  { id: 23, name: 'Pettah',                type: 'prop',    group: 'red',       price: 220, houseCost: 150, rent: [18, 90, 250, 700, 875, 1050] },
+  { id: 23, name: 'Borella',                type: 'prop',    group: 'red',       price: 220, houseCost: 150, rent: [18, 90, 250, 700, 875, 1050] },
   { id: 24, name: 'Bambalapitiya',         type: 'prop',    group: 'red',       price: 240, houseCost: 150, rent: [20, 100, 300, 750, 925, 1100] },
   { id: 25, name: 'Bambalapitiya Station', type: 'transit', group: 'transit',   price: 200, icon: '🚂', rent: [25, 50, 100, 200] },
   { id: 26, name: 'Kollupitiya',           type: 'prop',    group: 'yellow',    price: 260, houseCost: 150, rent: [22, 110, 330, 800, 975, 1150] },
